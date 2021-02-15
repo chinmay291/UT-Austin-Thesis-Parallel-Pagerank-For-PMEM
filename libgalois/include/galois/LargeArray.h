@@ -29,6 +29,8 @@
 #include <boost/serialization/array.hpp>
 #include <boost/serialization/serialization.hpp>
 #include <boost/serialization/split_member.hpp>
+#include <libpmem.h>
+#include <libpmemobj.h>
 
 #include "galois/config.h"
 #include "galois/Galois.h"
@@ -36,6 +38,16 @@
 #include "galois/ParallelSTL.h"
 #include "galois/runtime/Mem.h"
 #include "galois/substrate/NumaMem.h"
+// #include "galois/graphs/GraphLayoutsPmem.h"
+
+typedef struct{
+  uint64_t nodeData_offset;
+  uint64_t edgeIndData_offset;
+  uint64_t edgeDst_offset;
+  uint64_t edgeData_offset;
+  uint64_t outOfLineLocks;
+}LC_CSR_root;
+
 
 namespace galois {
 
@@ -49,11 +61,14 @@ extern unsigned activeThreads;
  *
  * @tparam T value type of container
  */
+
 template <typename T>
 class LargeArray {
   substrate::LAptr m_realdata;
+  substrate::PMptr pm_realdata;
   T* m_data;
   size_t m_size;
+  PMEMobjpool* pop;
 
 public:
   typedef T raw_value_type;
@@ -74,7 +89,48 @@ public:
   };
 
 protected:
+  void* pmem_ptr_from_off(uint64_t pool_uuid, uint64_t offset)
+  {
+    PMEMoid oid = {pool_uuid, offset};
+    return pmemobj_direct(oid);
+  }
+
   enum AllocType { Blocked, Local, Interleaved, Floating };
+  void allocate_pmem(size_type n, AllocType t, PMEMobjpool* pop) 
+  {
+    assert(!m_data);
+    m_size = n;
+
+    switch (t) {
+    case Blocked:
+      galois::gDebug("Block-alloc'd");
+      pm_realdata =
+          substrate::largeMallocBlockedPmem(n * sizeof(T), pop);
+      break;
+    case Interleaved:
+      galois::gDebug("Interleave-alloc'd");
+      pm_realdata = substrate::largeMallocInterleavedPmem(n * sizeof(T), pop);
+      break;
+    case Local:
+      galois::gDebug("Local-allocd");
+      m_realdata = substrate::largeMallocLocal(n * sizeof(T));
+      break;
+    case Floating:
+      galois::gDebug("Floating-alloc'd");
+      m_realdata = substrate::largeMallocFloating(n * sizeof(T));
+      break;
+    };
+    m_data = reinterpret_cast<T*>(pm_realdata.get());
+  }
+
+  // void freePmem() {
+  //   PMEMoid oid = pmemobj_oid(m_data);
+  //   // if(oid == OID_NULL){
+  //   //   GALOIS_DIE("pmemobj_oid returned OID_NULL\n");
+  //   // }
+  //   pmemobj_free(&oid);
+  // }
+
   void allocate(size_type n, AllocType t) {
     assert(!m_data);
     m_size = n;
@@ -165,12 +221,14 @@ public:
 
   LargeArray(LargeArray&& o) : m_data(0), m_size(0) {
     std::swap(this->m_realdata, o.m_realdata);
+    std::swap(this->pm_realdata, o.pm_realdata);
     std::swap(this->m_data, o.m_data);
     std::swap(this->m_size, o.m_size);
   }
 
   LargeArray& operator=(LargeArray&& o) {
     std::swap(this->m_realdata, o.m_realdata);
+    std::swap(this->pm_realdata, o.pm_realdata);
     std::swap(this->m_data, o.m_data);
     std::swap(this->m_size, o.m_size);
     return *this;
@@ -186,6 +244,7 @@ public:
 
   friend void swap(LargeArray& lhs, LargeArray& rhs) {
     std::swap(lhs.m_realdata, rhs.m_realdata);
+    std::swap(lhs.pm_realdata, rhs.pm_realdata);
     std::swap(lhs.m_data, rhs.m_data);
     std::swap(lhs.m_size, rhs.m_size);
   }
@@ -204,6 +263,7 @@ public:
   //! [allocatefunctions]
   //! Allocates interleaved across NUMA (memory) nodes.
   void allocateInterleaved(size_type n) { allocate(n, Interleaved); }
+  void allocateInterleavedPmem(size_type n, PMEMobjpool* pop) { allocate_pmem(n, Interleaved, pop); }
 
   /**
    * Allocates using blocked memory policy
@@ -211,6 +271,7 @@ public:
    * @param  n         number of elements to allocate
    */
   void allocateBlocked(size_type n) { allocate(n, Blocked); }
+  void allocateBlockedPmem(size_type n, PMEMobjpool* pop) { allocate_pmem(n, Blocked, pop); }
 
   /**
    * Allocates using Thread Local memory policy
@@ -218,6 +279,7 @@ public:
    * @param  n         number of elements to allocate
    */
   void allocateLocal(size_type n) { allocate(n, Local); }
+  // void allocateLocalPmem(size_type n) { allocate_pmem(n, Local); }
 
   /**
    * Allocates using no memory policy (no pre alloc)
@@ -225,6 +287,7 @@ public:
    * @param  n         number of elements to allocate
    */
   void allocateFloating(size_type n) { allocate(n, Floating); }
+  // void allocateFloatingPmem(size_type n) { allocate_pmem(n, Floating); }
 
   /**
    * Allocate memory to threads based on a provided array specifying which
@@ -270,14 +333,18 @@ public:
 
   void deallocate() {
     m_realdata.reset();
+    pm_realdata.reset();
     m_data = 0;
     m_size = 0;
   }
 
   void destroy() {
+    // printf("Calling destroy()\n");
     if (!m_data)
       return;
+    // printf("Calling ParallelSTL destory()\n");
     galois::ParallelSTL::destroy(m_data, m_data + m_size);
+    // printf("ParallelSTL destory() successful\n");  
   }
 
   template <typename U = T>
@@ -342,7 +409,9 @@ public:
   const_iterator end() const { return 0; }
 
   void allocateInterleaved(size_type) {}
+  void allocateInterleavedPmem(size_type, PMEMobjpool*){}
   void allocateBlocked(size_type) {}
+  void allocateBlockedPmem(size_type, PMEMobjpool*){}
   void allocateLocal(size_type, bool = true) {}
   void allocateFloating(size_type) {}
   template <typename RangeArrayTy>
@@ -362,6 +431,11 @@ public:
   const_pointer data() const { return 0; }
   pointer data() { return 0; }
 };
+
+// POBJ_LAYOUT_BEGIN(raman);
+// POBJ_LAYOUT_ROOT(raman, LC_CSR_root);
+// POBJ_LAYOUT_TOID(raman, LargeArray);
+// POBJ_LAYOUT_END(raman); 
 
 } // namespace galois
 #endif

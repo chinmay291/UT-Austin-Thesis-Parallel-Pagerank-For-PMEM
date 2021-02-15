@@ -20,6 +20,7 @@
 #include "galois/substrate/PageAlloc.h"
 #include "galois/substrate/SimpleLock.h"
 #include "galois/gIO.h"
+// #include "galois/graphs/GraphLayoutsPmem.h"
 
 #include <mutex>
 
@@ -77,12 +78,32 @@ void* galois::substrate::allocPages(unsigned num, bool preFault) {
   }
 }
 
+void* galois::substrate::allocPmem(size_t bytes, PMEMobjpool* pop){
+  PMEMoid largeArrayOid;
+  // if (pmemobj_alloc(pop, &largeArrayOid, bytes, TOID_TYPE_NUM(galois::LargeArray), 0, 0))
+  if (pmemobj_alloc(pop, &largeArrayOid, bytes, 0, 0, 0)) 
+  {
+      GALOIS_SYS_DIE("pmemobj_alloc failed for allocate_pmem\n");
+      assert(0);
+  }
+  void* data = pmemobj_direct(largeArrayOid);
+  return data;
+}
+
+
 void galois::substrate::freePages(void* ptr, unsigned num) {
   std::lock_guard<SimpleLock> lg(allocLock);
   if (munmap(ptr, num * hugePageSize) != 0)
     GALOIS_SYS_DIE("Unmap failed");
 }
 
+void galois::substrate::freePmem(void* ptr) {
+  PMEMoid oid = pmemobj_oid(ptr);
+  // if(oid == OID_NULL){
+  //   perror("pmemobj_oid returned OID_NULL\n");
+  // }
+  pmemobj_free(&oid);
+}
 /*
 
 class PageSizeConf {

@@ -23,7 +23,7 @@
 #include <cstddef>
 
 #include "galois/config.h"
-
+#include<libpmemobj.h>
 #ifdef __linux__
 #include <linux/mman.h>
 #endif
@@ -64,13 +64,13 @@ namespace substrate {
 
 // size of pages
 size_t allocSize();
-
+// int dummy_constructor();
 // allocate contiguous pages, optionally faulting them in
 void* allocPages(unsigned num, bool preFault);
-
+void* allocPmem(size_t bytes, PMEMobjpool* pop);
 // free page range
 void freePages(void* ptr, unsigned num);
-
+void freePmem(void* ptr);
 } // namespace substrate
 } // namespace galois
 

@@ -17,10 +17,12 @@
  * Documentation, or loss or inaccuracy of data of any kind.
  */
 
+
 #include "galois/substrate/NumaMem.h"
 #include "galois/substrate/PageAlloc.h"
 #include "galois/substrate/ThreadPool.h"
 #include "galois/gIO.h"
+
 
 #include <cassert>
 
@@ -138,6 +140,10 @@ void galois::substrate::internal::largeFreer::operator()(void* ptr) const {
   largeFree(ptr, bytes);
 }
 
+void galois::substrate::internal::PmemFreer::operator()(void* ptr) const {
+  freePmem(ptr);
+}
+
 // round data to a multiple of mult
 static size_t roundup(size_t data, size_t mult) {
   auto rem = data % mult;
@@ -169,6 +175,18 @@ LAptr galois::substrate::largeMallocInterleaved(size_t bytes,
   return LAptr{data, internal::largeFreer{bytes}};
 }
 
+PMptr galois::substrate::largeMallocInterleavedPmem(size_t bytes,
+                                                PMEMobjpool* pop) {
+  // void* data = allocPages(bytes / allocSize(), false);
+
+  // Then page in based on thread number
+  // if (data)
+    // true = round robin paging
+    // pageIn(data, bytes, allocSize(), numThreads, true);
+  void* data = allocPmem(bytes, pop);
+  return PMptr{data, internal::PmemFreer{bytes}};
+}
+
 LAptr galois::substrate::largeMallocLocal(size_t bytes) {
   // round up to hugePageSize
   bytes = roundup(bytes, allocSize());
@@ -194,6 +212,11 @@ LAptr galois::substrate::largeMallocBlocked(size_t bytes, unsigned numThreads) {
     // false = blocked paging
     pageIn(data, bytes, allocSize(), numThreads, false);
   return LAptr{data, internal::largeFreer{bytes}};
+}
+
+PMptr galois::substrate::largeMallocBlockedPmem(size_t bytes, PMEMobjpool* pop) {
+  void* data = allocPmem(bytes, pop);
+  return PMptr{data, internal::PmemFreer{bytes}};
 }
 
 /**

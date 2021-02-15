@@ -306,9 +306,19 @@ public:
   void outOfLineAllocateInterleaved(size_t numNodes) {
     outOfLineLocks.allocateInterleaved(numNodes);
   }
+  
+  void outOfLineAllocateInterleavedPmem(size_t numNodes, PMEMobjpool* pop) {
+    outOfLineLocks.allocateInterleavedPmem(numNodes, pop);
+  }
+  
   void outOfLineAllocateBlocked(size_t numNodes) {
     outOfLineLocks.allocateBlocked(numNodes);
   }
+  
+  void outOfLineAllocateBlockedPmem(size_t numNodes, PMEMobjpool* pop) {
+    outOfLineLocks.allocateBlockedPmem(numNodes, pop);
+  }
+
   void outOfLineAllocateFloating(size_t numNodes) {
     outOfLineLocks.allocateFloating(numNodes);
   }
@@ -330,7 +340,9 @@ public:
   void outOfLineAcquire(size_t, MethodFlag) {}
   void outOfLineAllocateLocal(size_t) {}
   void outOfLineAllocateInterleaved(size_t) {}
+  void outOfLineAllocateInterleavedPmem(size_t, PMEMobjpool*) {}
   void outOfLineAllocateBlocked(size_t) {}
+  void outOfLineAllocateBlockedPmem(size_t, PMEMobjpool*) {}
   void outOfLineAllocateFloating(size_t) {}
   void outOfLineConstructAt(size_t) {}
   template <typename RangeArrayType>

@@ -36,6 +36,8 @@
 #include <fcntl.h>
 #include <unistd.h>
 
+#include<libpmem.h>
+
 /**
  * Performs an mmap of all provided arguments.
  */
@@ -285,8 +287,13 @@ void FileGraph::fromFile(const std::string& filename) {
 #ifdef MAP_POPULATE
   _MAP_BASE |= MAP_POPULATE;
 #endif
-  void* base = mmap(nullptr, buf.st_size, PROT_READ, _MAP_BASE, fd, 0);
-  if (base == MAP_FAILED)
+  // void* base = mmap(nullptr, buf.st_size, PROT_READ, _MAP_BASE, fd, 0);
+  // if (base == MAP_FAILED)
+  //   GALOIS_SYS_DIE("failed reading ", "'", filename, "'");
+  size_t mapped_len;
+  int is_pmem;
+  void* base = pmem_map_file(filename.c_str(), buf.st_size, PMEM_FILE_CREATE, 0666, &mapped_len, &is_pmem);
+  if (base == NULL)
     GALOIS_SYS_DIE("failed reading ", "'", filename, "'");
   mappings.push_back({base, static_cast<size_t>(buf.st_size)});
 

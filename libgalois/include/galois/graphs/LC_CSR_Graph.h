@@ -28,6 +28,7 @@
 #include <boost/serialization/split_member.hpp>
 #include <boost/serialization/binary_object.hpp>
 #include <boost/serialization/serialization.hpp>
+#include <libpmemobj.h>
 
 #include "galois/config.h"
 #include "galois/Galois.h"
@@ -35,6 +36,14 @@
 #include "galois/graphs/FileGraph.h"
 #include "galois/graphs/GraphHelpers.h"
 #include "galois/PODResizeableArray.h"
+// #include "galois/graphs/GraphLayoutsPmem.h"
+
+
+// Global pool uuid 
+uint64_t pool_uuid;
+
+/* Global pool pointer */
+PMEMobjpool* pop;
 
 namespace galois::graphs {
 /**
@@ -512,21 +521,62 @@ public:
         galois::no_stats(), galois::steal());
   }
 
+  void pmem_pool_open(size_t pool_size)
+  {
+    // Open the PMEMpool if it exists, otherwise create it.
+    // size_t pool_size = 2*1024*1024*1024UL;
+  
+    if( access("/mnt/pmem_emul/pool", F_OK ) != -1 ) 
+    {
+        pop = pmemobj_open("/mnt/pmem_emul/pool", "raman");
+    } 
+    else 
+    {
+        printf("Calling pmemobj_create\n");
+        pop = pmemobj_create("/mnt/pmem_emul/pool", "raman", pool_size, 0666);
+    }
+    
+    if (pop == NULL)
+    {
+        perror("Error: ");
+        GALOIS_DIE("failed to open the pool\n");
+    }
+    
+    // // Create the root pointer
+    // PMEMoid my_root = pmemobj_root(pop, sizeof(LC_CSR_root));
+    // if (pmemobj_direct(my_root) == NULL)
+    // {
+    //     perror("root pointer is null\n");
+    // } 
+    // pool_uuid = my_root.pool_uuid_lo;
+
+    // LC_CSR_root* w = pmemobj_direct(my_root);
+    // printf("my_root.off: %ld\n", my_root.off);
+
+  }
+
+  
+
   void allocateFrom(const FileGraph& graph) {
     numNodes = graph.size();
     numEdges = graph.sizeEdges();
+    
+    // Note: Minimum possible pool size is 8 MiB, ie. 8 * 1024 * 1024
+    size_t pool_size = 16*1024*1024UL;
+    pmem_pool_open(pool_size);
+
     if (UseNumaAlloc) {
-      nodeData.allocateBlocked(numNodes);
-      edgeIndData.allocateBlocked(numNodes);
-      edgeDst.allocateBlocked(numEdges);
-      edgeData.allocateBlocked(numEdges);
-      this->outOfLineAllocateBlocked(numNodes);
+      nodeData.allocateBlockedPmem(numNodes, pop);
+      edgeIndData.allocateBlockedPmem(numNodes, pop);
+      edgeDst.allocateBlockedPmem(numEdges, pop);
+      edgeData.allocateBlockedPmem(numEdges, pop);
+      this->outOfLineAllocateBlockedPmem(numNodes, pop);
     } else {
-      nodeData.allocateInterleaved(numNodes);
-      edgeIndData.allocateInterleaved(numNodes);
-      edgeDst.allocateInterleaved(numEdges);
-      edgeData.allocateInterleaved(numEdges);
-      this->outOfLineAllocateInterleaved(numNodes);
+      nodeData.allocateInterleavedPmem(numNodes, pop);
+      edgeIndData.allocateInterleavedPmem(numNodes, pop);
+      edgeDst.allocateInterleavedPmem(numEdges, pop);
+      edgeData.allocateInterleavedPmem(numEdges, pop);
+      this->outOfLineAllocateInterleavedPmem(numNodes, pop);
     }
   }
 
@@ -1025,3 +1075,60 @@ public:
 } // namespace galois::graphs
 
 #endif
+
+
+// POBJ_LAYOUT_BEGIN(raman);
+// POBJ_LAYOUT_ROOT(raman, LC_CSR_ROOT);
+// POBJ_LAYOUT_TOID(raman, LargeArray);
+// POBJ_LAYOUT_END(raman);
+
+// // Global pool uuid 
+// uint64_t pool_uuid;
+
+// /* Global pool pointer */
+// PMEMobjpool* pop;
+
+// void* pmem_ptr_from_off(uint64_t offset)
+// {
+//     PMEMoid oid = {pool_uuid, offset};
+//     return pmemobj_direct(oid);
+// }
+
+// void* pmem_pool_open(size_t pool_size)
+// {
+//     // Open the PMEMpool if it exists, otherwise create it.
+//     // size_t pool_size = 2*1024*1024*1024UL;
+//     if( access("/mnt/pmem_emul/pool", F_OK ) != -1 ) 
+//     {
+//         pop = pmemobj_open("/mnt/pmem_emul/pool", POBJ_LAYOUT_NAME(raman));
+//         // reload the root
+//     } else 
+//     {
+//         pop = pmemobj_create("/mnt/pmem_emul/pool", POBJ_LAYOUT_NAME(raman), pool_size, 0666);
+//     }
+    
+//     if (pop == NULL)
+//     {
+//         perror("failed to open the pool\n");
+//     }
+    
+//     // // Create the root pointer
+//     // PMEMoid my_root = pmemobj_root(pop, sizeof(LC_CSR_root));
+//     // if (pmemobj_direct(my_root) == NULL)
+//     // {
+//     //     perror("root pointer is null\n");
+//     // } 
+//     // pool_uuid = my_root.pool_uuid_lo;
+
+//     // LC_CSR_root* w = pmemobj_direct(my_root);
+//     // printf("my_root.off: %ld\n", my_root.off);
+
+// }
+
+// typedef struct{
+//   uint64_t nodeData_offset;
+//   uint64_t edgeIndData_offset;
+//   uint64_t edgeDst_offset;
+//   uint64_t edgeData_offset;
+//   uint64_t outOfLineLocks;
+// }LC_CSR_root;
