@@ -556,7 +556,10 @@ public:
   }
 
   
-
+/*
+Memory consumption on DRAM is O(V) because nodeData and edgeIndData are alloc on it. edgeDst and edgeData are allocated on PM 
+and it's memory consumption is O(E).
+*/
   void allocateFrom(const FileGraph& graph) {
     numNodes = graph.size();
     numEdges = graph.sizeEdges();
@@ -566,14 +569,14 @@ public:
     pmem_pool_open(pool_size);
 
     if (UseNumaAlloc) {
-      nodeData.allocateBlockedPmem(numNodes, pop);
-      edgeIndData.allocateBlockedPmem(numNodes, pop);
+      nodeData.allocateBlocked(numNodes, pop);
+      edgeIndData.allocateBlocked(numNodes, pop);
       edgeDst.allocateBlockedPmem(numEdges, pop);
       edgeData.allocateBlockedPmem(numEdges, pop);
       this->outOfLineAllocateBlockedPmem(numNodes, pop);
     } else {
-      nodeData.allocateInterleavedPmem(numNodes, pop);
-      edgeIndData.allocateInterleavedPmem(numNodes, pop);
+      nodeData.allocateInterleaved(numNodes, pop);
+      edgeIndData.allocateInterleaved(numNodes, pop);
       edgeDst.allocateInterleavedPmem(numEdges, pop);
       edgeData.allocateInterleavedPmem(numEdges, pop);
       this->outOfLineAllocateInterleavedPmem(numNodes, pop);
