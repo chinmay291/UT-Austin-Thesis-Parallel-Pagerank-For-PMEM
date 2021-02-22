@@ -569,14 +569,14 @@ and it's memory consumption is O(E).
     pmem_pool_open(pool_size);
 
     if (UseNumaAlloc) {
-      nodeData.allocateBlocked(numNodes, pop);
-      edgeIndData.allocateBlocked(numNodes, pop);
+      nodeData.allocateBlocked(numNodes);
+      edgeIndData.allocateBlocked(numNodes);
       edgeDst.allocateBlockedPmem(numEdges, pop);
       edgeData.allocateBlockedPmem(numEdges, pop);
       this->outOfLineAllocateBlockedPmem(numNodes, pop);
     } else {
-      nodeData.allocateInterleaved(numNodes, pop);
-      edgeIndData.allocateInterleaved(numNodes, pop);
+      nodeData.allocateInterleaved(numNodes);
+      edgeIndData.allocateInterleaved(numNodes);
       edgeDst.allocateInterleavedPmem(numEdges, pop);
       edgeData.allocateInterleavedPmem(numEdges, pop);
       this->outOfLineAllocateInterleavedPmem(numNodes, pop);
