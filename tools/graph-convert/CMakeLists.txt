@@ -1,5 +1,5 @@
 add_executable(graph-convert graph-convert.cpp)
-target_link_libraries(graph-convert galois_shmem LLVMSupport)
+target_link_libraries(graph-convert galois_shmem LLVMSupport pmemobj pmem)
 install(TARGETS graph-convert
   EXPORT GaloisTargets
   DESTINATION "${CMAKE_INSTALL_BINDIR}"
@@ -35,7 +35,7 @@ compare_with_sample(-edgelist2gr -gr2edgelist test-inputs/with-comments.edgelist
 
 
 add_executable(graph-convert-huge graph-convert-huge.cpp)
-target_link_libraries(graph-convert-huge galois_shmem LLVMSupport)
+target_link_libraries(graph-convert-huge galois_shmem LLVMSupport pmemobj pmem)
 if (TARGET Boost::Boost)
   target_link_libraries(graph-convert-huge Boost::Boost)
 else()
