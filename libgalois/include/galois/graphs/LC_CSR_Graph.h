@@ -573,13 +573,13 @@ and it's memory consumption is O(E).
       edgeIndData.allocateBlocked(numNodes);
       edgeDst.allocateBlockedPmem(numEdges, pop);
       edgeData.allocateBlockedPmem(numEdges, pop);
-      this->outOfLineAllocateBlockedPmem(numNodes, pop);
+      this->outOfLineAllocateBlocked(numNodes);
     } else {
       nodeData.allocateInterleaved(numNodes);
       edgeIndData.allocateInterleaved(numNodes);
       edgeDst.allocateInterleavedPmem(numEdges, pop);
       edgeData.allocateInterleavedPmem(numEdges, pop);
-      this->outOfLineAllocateInterleavedPmem(numNodes, pop);
+      this->outOfLineAllocateInterleaved(numNodes);
     }
   }
 
