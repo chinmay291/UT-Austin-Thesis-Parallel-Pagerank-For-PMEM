@@ -525,7 +525,7 @@ public:
   {
     // Open the PMEMpool if it exists, otherwise create it.
     // size_t pool_size = 2*1024*1024*1024UL;
-  
+    std::cout << "Opening the memory pool" << std::endl;
     if( access("/mnt/pmem_emul/pool", F_OK ) != -1 ) 
     {
         pop = pmemobj_open("/mnt/pmem_emul/pool", "raman");

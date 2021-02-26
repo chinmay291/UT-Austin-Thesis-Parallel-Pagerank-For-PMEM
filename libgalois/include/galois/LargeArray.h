@@ -100,7 +100,7 @@ protected:
   {
     assert(!m_data);
     m_size = n;
-
+    std::cout << "Allocating pmem" << std::endl;
     switch (t) {
     case Blocked:
       galois::gDebug("Block-alloc'd");
