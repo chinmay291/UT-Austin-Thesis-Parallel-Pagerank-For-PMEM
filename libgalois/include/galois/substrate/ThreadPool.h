@@ -158,7 +158,11 @@ public:
     // work =
     // std::function<void(void)>(ExecuteTuple(std::forward<Args>(args)...));
     assert(num <= getMaxThreads());
+    // std::cout << "Calling runInternal" << std::endl;
+    // printf("Calling runInternal\n");
     runInternal(num);
+    // printf("runInternal complete\n");
+    // std::cout << "runInternal complete" << std::endl;
   }
 
   //! run function in a dedicated thread until the threadpool exits

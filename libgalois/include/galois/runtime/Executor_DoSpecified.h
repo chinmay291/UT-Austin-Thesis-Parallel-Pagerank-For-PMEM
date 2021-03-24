@@ -385,6 +385,7 @@ public:
     term.initializeThread();
 
     unsigned id = substrate::ThreadPool::getTID();
+    // std::cout << "tid = " << id << std::endl;
 
     *workers.getLocal(id) =
         ThreadContext(id, range.local_begin(), range.local_end());

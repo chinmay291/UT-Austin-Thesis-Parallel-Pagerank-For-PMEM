@@ -179,7 +179,7 @@ void ThreadPool::decascade() {
 void ThreadPool::cascade(bool fastmode) {
   auto& me = my_box;
   assert(me.wbegin <= me.wend);
-
+  // printf("Cascade: TID = %u\n",getTID());
   // nothing to wake up
   if (me.wbegin == me.wend) {
     return;
@@ -214,8 +214,18 @@ void ThreadPool::runInternal(unsigned num) {
   assert(!masterFastmode || masterFastmode == num);
   // launch threads
   cascade(masterFastmode);
+  // printf("runInternal: TID = %u\n",getTID());
   // Do master thread work
   try {
+    /* 
+      Changes made by Chinmay on 8th March 2021
+
+    */
+    // for(int z = 0; z < 4; z++){
+    //   // std::cout << "Thread id = " << getHWTopo().threadTopoInfo[z].tid << std::endl;
+    //   std::cout << "Thread id = " << signals[z]->topo.tid << std::endl;
+    // }
+    // std::cout << getTID() << std::endl;
     work();
   } catch (const shutdown_ty&) {
     return;
@@ -223,6 +233,7 @@ void ThreadPool::runInternal(unsigned num) {
   }
   // wait for children
   decascade();
+  // std::cout << "Descascade complete" << std::endl;
   // Clean up
   work    = nullptr;
   running = false;

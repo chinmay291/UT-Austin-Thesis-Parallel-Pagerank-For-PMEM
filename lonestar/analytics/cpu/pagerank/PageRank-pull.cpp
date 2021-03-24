@@ -197,11 +197,17 @@ void computePRTopological(Graph& graph) {
   unsigned int iteration = 0;
   galois::GAccumulator<float> accum;
 
+  std::atomic<uint64_t> computeT(0);
+
   float base_score = (1.0f - ALPHA) / graph.size();
   while (true) {
     galois::do_all(
         galois::iterate(graph),
         [&](const GNode& src) {
+
+          galois::StatTimer computeTime("Timer_Compute");
+          computeTime.start();
+
           constexpr const galois::MethodFlag flag =
               galois::MethodFlag::UNPROTECTED;
 
@@ -227,8 +233,12 @@ void computePRTopological(Graph& graph) {
           //! there is a data dependence on the pagerank value.
           sdata.value = value;
           accum += diff;
+
+          computeTime.stop();
+          computeT.fetch_add(computeTime.get_usec());
+          
         },
-        galois::no_stats(), galois::steal(), galois::chunk_size<CHUNK_SIZE>(),
+        galois::steal(), galois::chunk_size<CHUNK_SIZE>(),
         galois::loopname("PageRank"));
 
 #if DEBUG
@@ -242,6 +252,8 @@ void computePRTopological(Graph& graph) {
     accum.reset();
 
   } ///< End while(true).
+
+  std::cout << "COMPUTE TIME = "<< computeT << std::endl;
 
   galois::runtime::reportStat_Single("PageRank", "Rounds", iteration);
   if (iteration >= maxIterations) {

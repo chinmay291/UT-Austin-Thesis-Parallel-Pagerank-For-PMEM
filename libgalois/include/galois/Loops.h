@@ -73,6 +73,15 @@ void do_all(const RangeFunc& rangeMaker, FunctionTy&& fn, const Args&... args) {
   runtime::do_all_gen(rangeMaker(tpl), std::forward<FunctionTy>(fn), tpl);
 }
 
+
+/* Added by Chinmay: Remove if not required
+template <typename RangeFunc, typename FunctionTy, typename... Args>
+void do_specified(const RangeFunc& rangeMaker1, FunctionTy&& fn1, int NumThreads1, const RangeFunc& rangeMaker2, FunctionTy&& fn2, int NumThreads2, const Args&... args) {
+  auto tpl = std::make_tuple(args...);
+  runtime::do_specified_gen(rangeMaker1(tpl), std::forward<FunctionTy>(fn1), NumThreads1, rangeMaker2(tpl), std::forward<FunctionTy>(fn2), NumThreads2, tpl);
+}
+*/
+
 /**
  * Low-level parallel loop. Operator is applied for each running thread.
  * Operator should confirm to <code>fn(tid, numThreads)</code> where tid is

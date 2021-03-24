@@ -265,6 +265,8 @@ public:
   void allocateInterleaved(size_type n) { allocate(n, Interleaved); }
   void allocateInterleavedPmem(size_type n, PMEMobjpool* pop) { allocate_pmem(n, Interleaved, pop); }
 
+//Just a comment
+
   /**
    * Allocates using blocked memory policy
    *
