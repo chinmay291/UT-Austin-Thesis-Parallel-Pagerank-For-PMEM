@@ -1018,7 +1018,7 @@ int main(int argc, char** argv) {
   
   printf("Main: calling do_specified\n");
   galois::do_specified(
-        1, 1, 
+        2, 2, 
         galois::iterate(transposeGraph),
         [&](GNode src){
           transposeGraph.getData(src).value = 0;

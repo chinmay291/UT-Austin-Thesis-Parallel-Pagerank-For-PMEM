@@ -397,7 +397,8 @@ private:
   std::vector<int> workloadTypes;
   Iter lb;
   Iter le;
-  // std::vector<std::pair<Iter, Iter>> ranges;
+  int numThreads;
+  std::vector<std::pair<Iter, Iter>> ranges;
   substrate::PerThreadStorage<ThreadContext> workers;
 
   substrate::TerminationDetection& term;
@@ -430,7 +431,7 @@ public:
   }
 
   //Added by Chinmay
-  DoAllStealingExec(int which, const R& _range, F _func, const ArgsTuple& argsTuple)
+  DoAllStealingExec(int which, int _numThreads, const R& _range, F _func, const ArgsTuple& argsTuple)
       : range(_range), func(_func),
         loopname(galois::internal::getLoopName(argsTuple)),
         chunk_size(get_trait_value<chunk_size_tag>(argsTuple).value),
@@ -441,20 +442,21 @@ public:
 
         assert(chunk_size > 0);
         //Added by Chinmay
+        numThreads = _numThreads;
         for(unsigned int i = 0; i < galois::getActiveThreads(); i++){
           workloadTypes.push_back(0);
         }
 
-        // Iter beg = range.begin();
-        // auto size = (range.end() - range.begin()) / numThreads;
-        // for(int i = 0; i < numThreads; i++){
-        //   if(i == numThreads -1){
-        //       ranges.push_back(std::make_pair(beg + size*i, range.end()));  
-        //   }
-        //   else{
-        //       ranges.push_back(std::make_pair(beg + size*i, beg + size*(i+1) - 1));  
-        //   }
-        // }
+        Iter beg = range.begin();
+        auto size = (range.end() - range.begin()) / numThreads;
+        for(int i = 0; i < numThreads; i++){
+          if(i == numThreads -1){
+              ranges.push_back(std::make_pair(beg + size*i, range.end()));  
+          }
+          else{
+              ranges.push_back(std::make_pair(beg + size*i, beg + size*(i+1)));  
+          }
+        }
   }
 
 /*
@@ -531,10 +533,17 @@ ie. the range is split up among 4 threads if there are max 4 threads avail on th
 and if only 2 threads exec a workload and they use local_begin() and local_end(), then the whole
 range will not be covered
 */
-    *workers.getLocal(id) = ThreadContext(id, range.local_begin(), range.local_end());
+    // *workers.getLocal(id) = ThreadContext(id, range.local_begin(), range.local_end());
     // auto& tp = substrate::getThreadPool();
     // int index = tp.getTIDIndex(workloadType, id);
-    // *workers.getLocal(id) = ThreadContext(id, ranges[index].first, ranges[index].second);
+    int index;
+    if(workloadType == 1){
+      index = id;
+    }
+    else{
+      index = id - numThreads;
+    }
+    *workers.getLocal(id) = ThreadContext(id, ranges[index].first, ranges[index].second);
     // std::cout << "Range for tid = " << id << " is = " << std::distance(ranges[index].first, ranges[index].second) << std::endl;
 
     initTime.stop();
@@ -642,11 +651,11 @@ struct ChooseDoAllImpl {
 
     internal::DoAllStealingExec<
         R, OperatorReferenceType<decltype(std::forward<F1>(func1))>, ArgsT>
-        exec1(1, range, std::forward<F1>(func1), argsTuple);
+        exec1(1, numThreads1, range, std::forward<F1>(func1), argsTuple);
 
     internal::DoAllStealingExec<
         R, OperatorReferenceType<decltype(std::forward<F2>(func2))>, ArgsT>
-        exec2(2, range, std::forward<F2>(func2), argsTuple);
+        exec2(2, numThreads2, range, std::forward<F2>(func2), argsTuple);
 
     substrate::Barrier& barrier = getBarrier(activeThreads);
 
