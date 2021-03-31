@@ -36,6 +36,9 @@ class SharedMem {
 
   std::unique_ptr<internal::LocalTerminationDetection<>> m_termPtr;
   std::unique_ptr<internal::BarrierInstance<>> m_biPtr;
+  //Added by Chinmay
+  std::unique_ptr<internal::LocalTerminationDetection<>> m_termPtrWorkload1;
+  std::unique_ptr<internal::LocalTerminationDetection<>> m_termPtrWorkload2;
 
 public:
   /**

@@ -35,10 +35,16 @@ class TerminationDetection;
  * activeThreads
  */
 TerminationDetection& getSystemTermination(unsigned activeThreads);
+//Added by Chinmay
+TerminationDetection& getSystemTerminationWorkload1(unsigned activeThreads);
+TerminationDetection& getSystemTerminationWorkload2(unsigned activeThreads);
 
 class TerminationDetection {
 
   friend TerminationDetection& getSystemTermination(unsigned);
+  //Added by Chinmay
+  friend TerminationDetection& getSystemTerminationWorkload1(unsigned);
+  friend TerminationDetection& getSystemTerminationWorkload2(unsigned);
 
 protected:
   CacheLineStorage<std::atomic<int>> globalTerm;
@@ -47,6 +53,9 @@ protected:
    * for internal use by child classes
    */
   virtual void init(unsigned activeThreads) = 0;
+  // virtual void init(unsigned activeThreads){
+    // printf("Termination.h: Inside init(line 51). activeThreads = %u\n", activeThreads);
+  // }
 
 public:
   virtual ~TerminationDetection(void);
@@ -54,7 +63,11 @@ public:
    * Initializes the per-thread state.  All threads must call this
    * before any call localTermination.
    */
-  virtual void initializeThread() = 0;
+  // virtual void initializeThread() = 0;
+
+  virtual void initializeThread(){
+    // printf("Inside initializeThread() in Termination.h line 58\n");
+  }
 
   /**
    * Process termination locally.  May be called as often as needed.  The
@@ -102,12 +115,16 @@ class LocalTerminationDetection : public TerminationDetection {
   bool isSysMaster() const { return ThreadPool::getTID() == 0; }
 
 protected:
-  virtual void init(unsigned aThreads) { activeThreads = aThreads; }
+  virtual void init(unsigned aThreads) { 
+    activeThreads = aThreads;
+    // printf("Termination.h: Inside init(line 114)\n"); 
+  }
 
 public:
   LocalTerminationDetection() {}
 
   virtual void initializeThread() {
+    // printf("Termination.h: Inside term.initializeThread line 121\n");
     TokenHolder& th   = *data.getLocal();
     th.tokenIsBlack   = false;
     th.processIsBlack = true;
@@ -217,12 +234,16 @@ class TreeTerminationDetection : public TerminationDetection {
   bool isSysMaster() const { return ThreadPool::getTID() == 0; }
 
 protected:
-  virtual void init(unsigned aThreads) { activeThreads = aThreads; }
+  virtual void init(unsigned aThreads) { 
+    activeThreads = aThreads;
+    // printf("Termination.h: Inside init(line 233)\n");
+  }
 
 public:
   TreeTerminationDetection() {}
 
   virtual void initializeThread() {
+    // printf("Inside term.initializeThread line 227\n");
     TokenHolder& th = *data.getLocal();
     th.down_token   = false;
     for (int i = 0; i < num; ++i)
@@ -255,6 +276,10 @@ public:
 };
 
 void setTermDetect(TerminationDetection* term);
+//Added by Chinmay
+void setTermDetectWorkload1(TerminationDetection* term);
+void setTermDetectWorkload2(TerminationDetection* term);
+
 } // end namespace internal
 
 } // namespace substrate

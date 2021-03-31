@@ -136,8 +136,43 @@ void ThreadPool::threadLoop(unsigned tid) {
   do {
     me.wait(fastmode);
     cascade(fastmode);
+    printf("ThreadPool.cpp: Inside THREADLOOP for tid = %u\n",tid);
     try {
-      work();
+      if(work != nullptr){
+        work();
+      }
+      else{
+        // int workloadType = 0;
+        // for(int i = 0; i < numThreads1; i++){
+        //     if((unsigned int)work1_tids[i] == tid){
+        //       workloadType = 1;
+        //       break;
+        //     }
+        // }
+        // if(workloadType == 0){
+        //   workloadType = 2;
+        // }
+        // if(workloadType == 1){
+        //   printf("Calling work1()\n");
+        //   work1();  
+        //   printf("Completed work1()\n");
+        // }
+        // else{
+        //   printf("Calling work2()\n");
+        //   work2();
+        //   printf("Completed work2()\n");
+        // }    
+        if(getTID() < (unsigned int)numThreads1){
+          printf("Calling work1()\n");
+          work1();  
+          printf("Completed work1()\n");
+        }
+        else{
+          printf("Calling work2()\n");
+          work2();
+          printf("Completed work2()\n");
+        }
+      }
     } catch (const shutdown_ty&) {
       return;
     } catch (const fastmode_ty& fm) {
@@ -182,10 +217,12 @@ void ThreadPool::cascade(bool fastmode) {
   // printf("Cascade: TID = %u\n",getTID());
   // nothing to wake up
   if (me.wbegin == me.wend) {
+    // printf("Nothing to wake up\n");
     return;
   }
 
   auto midpoint = me.wbegin + (1 + me.wend - me.wbegin) / 2;
+  // printf("Cascade: Calculated midpoint for TID = %u\n",getTID());
 
   auto child1    = signals[me.wbegin];
   child1->wbegin = me.wbegin + 1;
@@ -198,6 +235,7 @@ void ThreadPool::cascade(bool fastmode) {
     child2->wend   = me.wend;
     child2->wakeup(fastmode);
   }
+  // printf("ThreadPool.cpp: Exiting cascade for TID = %u\n", getTID());
 }
 
 void ThreadPool::runInternal(unsigned num) {
@@ -236,6 +274,48 @@ void ThreadPool::runInternal(unsigned num) {
   // std::cout << "Descascade complete" << std::endl;
   // Clean up
   work    = nullptr;
+  running = false;
+}
+
+/* Added by Chinmay */
+void ThreadPool::runInternal() {
+  // sanitize num
+  // seq write to starting should make work safe
+  GALOIS_ASSERT(!running, "Recursive thread pool execution not supported");
+  running = true;
+  // my_box is tid 0
+  auto& me  = my_box;
+  me.wbegin = 1;
+  me.wend   = numThreads1 + numThreads2;
+
+  assert(!masterFastmode || (int)masterFastmode == numThreads1 + numThreads2);
+  // launch threads
+  cascade(masterFastmode);
+  // printf("runInternal: TID = %u\n",getTID());
+  // Do master thread work
+  try {
+    // printf("ThreadPool.cpp: Inside try of runInternal(line 259). tid = %u\n", getTID());
+    if(getTID() < (unsigned int)numThreads1){
+      printf("Calling work1()\n");
+      work1();  
+      printf("Completed work1()\n");
+    }
+    else{
+      printf("Calling work2()\n");
+      work2();
+      printf("Completed work2()\n");
+    }    
+  } catch (const shutdown_ty&) {
+    return;
+  } catch (const fastmode_ty& fm) {
+  }
+  // wait for children
+  decascade();
+  // std::cout << "Descascade complete" << std::endl;
+  // Clean up
+  work    = nullptr;
+  work1    = nullptr;
+  work2    = nullptr;
   running = false;
 }
 

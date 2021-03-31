@@ -289,6 +289,7 @@ void prResidual(Graph& graph) {
 
 int main(int argc, char** argv) {
   galois::SharedMemSys G;
+  galois::SharedMemSys H;
   LonestarStart(argc, argv, name, desc, url, &inputFile);
 
   if (!transposedGraph) {

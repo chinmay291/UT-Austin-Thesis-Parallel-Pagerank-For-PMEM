@@ -30,6 +30,8 @@
 #include "galois/substrate/PaddedLock.h"
 #include "galois/substrate/ThreadPool.h"
 
+#include<iostream>
+
 namespace galois {
 namespace substrate {
 
@@ -126,7 +128,18 @@ public:
   }
 
   T* getLocal() {
+    // printf("PerThreadStorage: Inside getLocal\n");
     void* ditem = b->getLocal(offset, ptsBase);
+    if(ditem == nullptr){
+      // printf("PerThreadStorage: ditem is a nullptr\n");
+    }
+    else{
+     // printf("PerThreadStorage: ditem is a not a nullptr\n"); 
+    }
+    T* t_ditem = reinterpret_cast<T*>(ditem);
+    if(t_ditem){
+      // printf("PerThreadStorage: t_ditem initialized\n");  
+    }
     return reinterpret_cast<T*>(ditem);
   }
 
@@ -137,7 +150,18 @@ public:
 
   //! Like getLocal() but optimized for when you already know the thread id
   T* getLocal(unsigned int thread) {
+    // printf("PerThreadStorage: Inside getLocal\n");
     void* ditem = b->getLocal(offset, thread);
+    if(ditem == nullptr){
+      // printf("PerThreadStorage: ditem is a nullptr\n");
+    }
+    else{
+     // printf("PerThreadStorage: ditem is a not a nullptr\n"); 
+    }
+    T* t_ditem = reinterpret_cast<T*>(ditem);
+    if(t_ditem){
+      // printf("PerThreadStorage: t_ditem initialized\n");  
+    }
     return reinterpret_cast<T*>(ditem);
   }
 

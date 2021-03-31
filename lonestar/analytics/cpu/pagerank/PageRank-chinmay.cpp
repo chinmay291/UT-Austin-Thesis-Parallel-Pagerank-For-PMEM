@@ -122,7 +122,7 @@ void preprocess(Graph& graph){
     if(currEdges > cacheSize){
       //push make_pair(currStart, currEnd) into a vector/insertBag
       bounds.push_back(std::make_pair(*currBegin, *currEnd));
-      std::cout << "bound end - begin = " << (*currEnd - *currBegin) << std::endl;
+      // std::cout << "bound end - begin = " << (*currEnd - *currBegin) << std::endl;
       currBegin = i;
       currEnd = currBegin;
       currEdges = graph.getDegree(*i);
@@ -1005,7 +1005,36 @@ int main(int argc, char** argv) {
                                         galois::runtime::pagePoolSize());
   galois::reportPageAlloc("MeminfoPre");
 
+  std::atomic<int>firstInt(0);
+  std::atomic<int>secondInt(0);
+  // galois::do_all(
+  //       galois::iterate(transposeGraph),
+  //       [&](GNode src){
+  //         transposeGraph.getData(src).value = 0;
+  //         firstInt.fetch_add(1);
+  //       }, 
+  //       galois::steal(),
+  //       galois::loopname("Bina Kaam ka loop"));
+  
+  printf("Main: calling do_specified\n");
+  galois::do_specified(
+        1, 1, 
+        galois::iterate(transposeGraph),
+        [&](GNode src){
+          transposeGraph.getData(src).value = 0;
+          firstInt.fetch_add(1);
+        }, 
+        [&](GNode src){
+          transposeGraph.getData(src).value = 0;
+          secondInt.fetch_add(1);
+        },
+        galois::steal(),
+        galois::loopname("Kaam ka loop"));
+  std::cout << "FIRST INT = " << firstInt << std::endl;
+  std::cout << "SECOND INT = " << secondInt << std::endl;
+
   //Added by Chinmay
+  /*
   prTopologicalChinmay(transposeGraph);
 
   galois::reportPageAlloc("MeminfoPost");
@@ -1045,8 +1074,12 @@ int main(int argc, char** argv) {
 #if DEBUG
   printPageRank(transposeGraph);
 #endif
+  */
 
   totalTime.stop();
+
+  std::cout << "FIRST INT = " << firstInt << std::endl;
+  std::cout << "SECOND INT = " << secondInt << std::endl;
 
   return 0;
 }

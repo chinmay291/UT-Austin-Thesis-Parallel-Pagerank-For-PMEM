@@ -33,6 +33,8 @@
 #include "galois/substrate/ThreadPool.h"
 #include "galois/Timer.h"
 
+#include<typeinfo>
+
 namespace galois::runtime {
 
 namespace internal {
@@ -60,22 +62,34 @@ class DoAllStealingExec {
     Iter shared_end;
     Diff_ty m_size;
     size_t num_iter;
+    //Added by Chinmay
+    // unsigned workloadType;
 
     // Stats
 
     ThreadContext()
         : work_mutex(), id(substrate::getThreadPool().getMaxThreads()),
           shared_beg(), shared_end(), m_size(0), num_iter(0) {
+            // printf("Executor_DoAll: Vanilla constructor of ThreadContext called. id = %u\n", id);
       // TODO: fix this initialization problem,
       // see initThread
     }
 
     ThreadContext(unsigned id, Iter beg, Iter end)
         : work_mutex(), id(id), shared_beg(beg), shared_end(end),
-          m_size(std::distance(beg, end)), num_iter(0) {}
+          m_size(std::distance(beg, end)), num_iter(0) {
+            // printf("Executor_DoAll: Custom constructor of ThreadContext called. id = %u\n", id);
+          }
+
+    // ThreadContext(unsigned id, Iter beg, Iter end, int wlt)
+    //     : work_mutex(), id(id), shared_beg(beg), shared_end(end),
+    //       m_size(std::distance(beg, end)), num_iter(0) {
+    //         workloadType = wlt;
+    //       }
 
     bool doWork(F func, const unsigned chunk_size) {
       Iter beg(shared_beg);
+      printf("Got beg for tid = %u\n",substrate::ThreadPool::getTID());
       Iter end(shared_end);
 
       bool didwork = false;
@@ -116,6 +130,7 @@ class DoAllStealingExec {
   private:
     bool getWork(Iter& priv_beg, Iter& priv_end, const unsigned chunk_size) {
       bool succ = false;
+      printf("Inside getWork for tid - %u\n", substrate::ThreadPool::getTID());
 
       work_mutex.lock();
       {
@@ -139,7 +154,7 @@ class DoAllStealingExec {
         }
       }
       work_mutex.unlock();
-
+      printf("Exiting getWork for tid - %u\n", substrate::ThreadPool::getTID());
       return succ;
     }
 
@@ -274,11 +289,15 @@ private:
       // go around the socket in circle starting from the next thread
       unsigned t = (poor.id + i) % per_pack + pack_beg;
       assert((t >= pack_beg) && (t < pack_end));
-
+/* Next if condition added by Chinmay */
+      if(workloadTypes[t] == 0 || workloadTypes[t] != workloadTypes[poor.id]){
+        continue;
+      }
       if (t < maxT) {
         if (workers.getRemote(t)->hasWorkWeak()) {
           sawWork = true;
 
+          // printf("Transfering work within socket for tid = %u\n",substrate::ThreadPool::getTID());
           stoleWork = transferWork(*workers.getRemote(t), poor, HALF);
 
           if (stoleWork) {
@@ -301,13 +320,21 @@ private:
     // unsigned maxT = LL::getMaxThreads ();
     unsigned maxT = galois::getActiveThreads();
 
+    // printf("Starting check for stealOutsideSocket for tid = %u. maxT = %u\n",substrate::ThreadPool::getTID(), maxT);
     for (unsigned i = 0; i < maxT; ++i) {
       ThreadContext& rich = *(workers.getRemote((poor.id + i) % maxT));
+      // printf("stealOutsideSocket: Got rich tcx\n");
+      /* Next if condition added by Chinmay */
+      if(workloadTypes[rich.id] == 0 || workloadTypes[rich.id] != workloadTypes[poor.id]){
+        continue;
+      }
 
       if (tp.getSocket(rich.id) != myPkg) {
+        // printf("stealOutsideSocket: Potential thread to steal from found\n");
         if (rich.hasWorkWeak()) {
           sawWork = true;
 
+          // printf("Transfering work within socket for tid = %u\n",substrate::ThreadPool::getTID());
           stoleWork = transferWork(rich, poor, amt);
           // stoleWork = transferWork (rich, poor, HALF);
 
@@ -317,19 +344,22 @@ private:
         }
       }
     }
-
+    // printf("stealOutsideSocket: Finished\n");
     return sawWork || stoleWork;
   }
 
   GALOIS_ATTRIBUTE_NOINLINE bool trySteal(ThreadContext& poor) {
     bool ret = false;
 
+    // printf("Inside trySteal for tid = %u\n",substrate::ThreadPool::getTID());
     ret = stealWithinSocket(poor);
+    // printf("Finished stealWithinSocket for tid = %u\n",substrate::ThreadPool::getTID());
 
     if (ret) {
       return true;
     }
 
+    // printf("Calling asmPause() for tid = %u\n",substrate::ThreadPool::getTID());
     substrate::asmPause();
 
     if (substrate::getThreadPool().isLeader(poor.id)) {
@@ -341,7 +371,9 @@ private:
       substrate::asmPause();
     }
 
+    // printf("Calling stealOutsideSocket for tid = %u\n",substrate::ThreadPool::getTID());
     ret = stealOutsideSocket(poor, HALF);
+    // printf("Finished stealOutsideSocket for tid = %u\n",substrate::ThreadPool::getTID());
     if (ret) {
       return true;
     }
@@ -353,8 +385,19 @@ private:
 private:
   R range;
   F func;
+  /*
+  F func1;
+  F func2;
+  int numThreads1;
+  int numThreads2;
+  */
   const char* loopname;
   Diff_ty chunk_size;
+  //Added by Chinmay
+  std::vector<int> workloadTypes;
+  Iter lb;
+  Iter le;
+  // std::vector<std::pair<Iter, Iter>> ranges;
   substrate::PerThreadStorage<ThreadContext> workers;
 
   substrate::TerminationDetection& term;
@@ -375,21 +418,127 @@ public:
         totalTime(loopname, "Total"), initTime(loopname, "Init"),
         execTime(loopname, "Execute"), stealTime(loopname, "Steal"),
         termTime(loopname, "Term") {
+
+        assert(chunk_size > 0);
+        //Added by Chinmay
+        // lb = range.local_begin();
+        // le = range.local_end();
+        // printf("DoAllStealingExec constructor: lb, le set\n");
+        for(unsigned int i = 0; i < galois::getActiveThreads(); i++){
+          workloadTypes.push_back(0);
+        }
+  }
+
+  //Added by Chinmay
+  DoAllStealingExec(int which, const R& _range, F _func, const ArgsTuple& argsTuple)
+      : range(_range), func(_func),
+        loopname(galois::internal::getLoopName(argsTuple)),
+        chunk_size(get_trait_value<chunk_size_tag>(argsTuple).value),
+        term(which == 1 ? substrate::getSystemTerminationWorkload1(activeThreads) : substrate::getSystemTerminationWorkload2(activeThreads)),
+        totalTime(loopname, "Total"), initTime(loopname, "Init"),
+        execTime(loopname, "Execute"), stealTime(loopname, "Steal"),
+        termTime(loopname, "Term") {
+
+        assert(chunk_size > 0);
+        //Added by Chinmay
+        for(unsigned int i = 0; i < galois::getActiveThreads(); i++){
+          workloadTypes.push_back(0);
+        }
+
+        // Iter beg = range.begin();
+        // auto size = (range.end() - range.begin()) / numThreads;
+        // for(int i = 0; i < numThreads; i++){
+        //   if(i == numThreads -1){
+        //       ranges.push_back(std::make_pair(beg + size*i, range.end()));  
+        //   }
+        //   else{
+        //       ranges.push_back(std::make_pair(beg + size*i, beg + size*(i+1) - 1));  
+        //   }
+        // }
+  }
+
+/*
+  DoAllStealingExec(const R& _range, int _numThreads1, F _func1, int _numThreads2, F _func2, const ArgsTuple& argsTuple)
+      : range(_range), func1(_func1), func2(_func2), numThreads1(_numThreads1), numThreads2(_numThreads2),
+        loopname(galois::internal::getLoopName(argsTuple)),
+        chunk_size(get_trait_value<chunk_size_tag>(argsTuple).value),
+        term(substrate::getSystemTermination(activeThreads)),
+        totalTime(loopname, "Total"), initTime(loopname, "Init"),
+        execTime(loopname, "Execute"), stealTime(loopname, "Steal"),
+        termTime(loopname, "Term") {
     assert(chunk_size > 0);
   }
+*/
 
   // parallel call
   void initThread(void) {
+    initTime.start();
+    // printf("Executor_DoAll: initTime started\n");
+
+    term.initializeThread();  
+    
+    // printf("Executor_DoAll: term.initializeThread() complete\n");
+
+    unsigned id = substrate::ThreadPool::getTID();
+
+    // try{
+    //   printf("Inisde try{}\n");
+    //   // Iter temp;
+    //   auto temp = lb;
+    //   temp++;
+
+    //   auto tcx = ThreadContext(id, lb, le);
+    //   printf("tcx set up\n");
+    //   tcx.id++;
+    // }
+    // catch(const char* message){
+    //   std::cerr << message << std::endl;
+    // }
+    // printf("temp Test complete\n");
+    // *workers.getLocal(id) =
+    //     ThreadContext(id, range.local_begin(), range.local_end());
+    
+    // auto tcx1 = ThreadContext(id, lb, le);
+    // printf("tcx1 set up\n");
+    // ThreadContext& myvar = *workers.getLocal(id);
+    // printf("myvar fetched\n");
+    // std::cout << "myvar.hasWorkWeak() = " << myvar.hasWorkWeak() << std::endl;
+    // *workers.getLocal(id) = ThreadContext(id, lb, le);
+    *workers.getLocal(id) = ThreadContext(id, range.local_begin(), range.local_end());
+    // printf("Executor_DoAll: worker set up complete\n");
+
+    initTime.stop();
+  }
+
+  /* Added by Chinmay */
+  void initThread(int workloadType) {
+    printf("Inside initThread() in Executor_DoAll.h\n");
     initTime.start();
 
     term.initializeThread();
 
     unsigned id = substrate::ThreadPool::getTID();
+    printf("term.initializeThread() complete fpr tid = %u\n", id);
 
-    *workers.getLocal(id) =
-        ThreadContext(id, range.local_begin(), range.local_end());
+    workloadTypes[id] = workloadType;
+
+    // std::cout << "initThread: range.local_end - local_begin = "<< range.local_end() - range.local_begin()<< std::endl;
+    
+/* We use range.begin() and range.end() to initialize ThreadContext instead of
+range.local_begin() and range.local_end() because then the whole range does not
+get covered by the threads executing one type of workload.
+ie. the range is split up among 4 threads if there are max 4 threads avail on the system
+and if only 2 threads exec a workload and they use local_begin() and local_end(), then the whole
+range will not be covered
+*/
+    *workers.getLocal(id) = ThreadContext(id, range.local_begin(), range.local_end());
+    // auto& tp = substrate::getThreadPool();
+    // int index = tp.getTIDIndex(workloadType, id);
+    // *workers.getLocal(id) = ThreadContext(id, ranges[index].first, ranges[index].second);
+    // std::cout << "Range for tid = " << id << " is = " << std::distance(ranges[index].first, ranges[index].second) << std::endl;
 
     initTime.stop();
+    printf("initThread() completed for tid = %u\n", id);
   }
 
   ~DoAllStealingExec() {
@@ -406,7 +555,10 @@ public:
 
   void operator()(void) {
 
+
+    printf("Executor_DoAll: Called overloaded operator () for tid = %u\n",substrate::ThreadPool::getTID());
     ThreadContext& ctx = *workers.getLocal();
+    printf("Got ctx for tid = %u\n",substrate::ThreadPool::getTID());
     totalTime.start();
 
     while (true) {
@@ -414,8 +566,11 @@ public:
 
       execTime.start();
 
-      if (ctx.doWork(func, chunk_size)) {
+      // std::cout << "m_size = " << ctx.m_size << " , tid = " << substrate::ThreadPool::getTID() << std::endl;
+      printf("Calling doWork() = %u\n",substrate::ThreadPool::getTID());
+      if (ctx.doWork(func, chunk_size)){
         workHappened = true;
+        printf("doWork() finished for tid = %u\n",substrate::ThreadPool::getTID());
       }
 
       execTime.stop();
@@ -423,22 +578,24 @@ public:
       assert(!ctx.hasWork());
 
       stealTime.start();
+      printf("Trying steal for tid = %u\n", substrate::ThreadPool::getTID());
       bool stole = trySteal(ctx);
+      printf("Finished trySteal for tid = %u\n", substrate::ThreadPool::getTID());
       stealTime.stop();
 
       if (stole) {
+        printf("Steal successful for tid = %u\n", substrate::ThreadPool::getTID());
         continue;
 
       } else {
-
         assert(!ctx.hasWork());
+        
         if (USE_TERM) {
           termTime.start();
           term.localTermination(workHappened);
 
           bool quit = term.globalTermination();
           termTime.stop();
-
           if (quit) {
             break;
           }
@@ -472,6 +629,78 @@ struct ChooseDoAllImpl {
     substrate::getThreadPool().run(
         activeThreads, [&exec](void) { exec.initThread(); }, std::ref(barrier),
         std::ref(exec));
+  }
+
+  /* Added by Chinmay */
+
+  template <typename R, typename F1, typename F2, typename ArgsT>
+  static void call_do_specified(const R& range, F1&& func1, int numThreads1, F2&& func2, 
+    int numThreads2, const ArgsT& argsTuple) {
+
+    std::cout << "call_do_specified: range.local_end - local_begin = "<< range.local_end() - range.local_begin()<< std::endl;
+    std::cout << "call_do_specified: range.end - begin = "<< range.end() - range.begin()<< std::endl;
+
+    internal::DoAllStealingExec<
+        R, OperatorReferenceType<decltype(std::forward<F1>(func1))>, ArgsT>
+        exec1(1, range, std::forward<F1>(func1), argsTuple);
+
+    internal::DoAllStealingExec<
+        R, OperatorReferenceType<decltype(std::forward<F2>(func2))>, ArgsT>
+        exec2(2, range, std::forward<F2>(func2), argsTuple);
+
+    substrate::Barrier& barrier = getBarrier(activeThreads);
+
+    // printf("Executor_DoAll: call_do_specified: numThreads1 = %d, numThreads2 = %d\n",numThreads1,numThreads2);
+
+    // std::function<void(void)> init1 = [&exec1](void) { exec1.initThread(1); };
+    // std::function<void(void)> init2 = [&exec2](void) { exec2.initThread(2); };
+
+    // auto tpl1 = std::make_tuple(std::forward<decltype(init1)>(init1), std::ref(barrier), std::ref(exec1));
+    // auto tpl2 = std::make_tuple(std::forward<decltype(init2)>(init2), std::ref(barrier), std::ref(exec2));
+
+    // substrate::getThreadPool().run_do_specified(numThreads1, numThreads2, 
+    //   std::forward<decltype(tpl1)>(tpl1), std::forward<decltype(tpl2)>(tpl2));
+
+    // substrate::getThreadPool().run_do_specified(numThreads1, numThreads2, tpl1, tpl2);
+
+    substrate::getThreadPool().run_do_specified(
+        numThreads1, numThreads2, [&exec1](void) { exec1.initThread(1); }, std::ref(barrier), std::ref(exec1),
+        [&exec2](void) { exec2.initThread(2); }, std::ref(barrier), std::ref(exec2));
+
+    //for debugging
+    // substrate::getThreadPool().run(
+    //     numThreads1, [&exec1](void) { exec1.initThread(1); }, std::ref(barrier),
+    //     std::ref(exec1));
+
+    // printf("Executor_DoAll: DEBUGGING COMPLETE(line 605)\n");
+
+    // substrate::getThreadPool().setWork(
+    //     numThreads1, 1, [&exec1](void) { exec1.initThread(1); }, std::ref(barrier),
+    //     std::ref(exec1));
+
+    // if(numThreads2 > 0){
+    //   substrate::getThreadPool().setWork(
+    //     numThreads2, 2, [&exec2](void) { exec2.initThread(2); }, std::ref(barrier),
+    //     std::ref(exec2));  
+    // }
+
+    // substrate::getThreadPool().run();
+
+    // For debugging
+    // internal::DoAllStealingExec<
+    //     R, OperatorReferenceType<decltype(std::forward<F2>(func2))>, ArgsT>
+    //     exec2(range, std::forward<F2>(func2), argsTuple);
+
+    // if(numThreads2 > 0){
+    //   substrate::getThreadPool().setWork(
+    //     numThreads2, 2, [&exec2](void) { exec2.initThread(); }, std::ref(barrier),
+    //     std::ref(exec2));  
+    // }
+
+    // substrate::getThreadPool().run_do_specified(
+    //     numThreads1, numThreads2, [&exec1](void) { exec1.initThread(); }, std::ref(barrier), std::ref(exec1),
+    //     [&exec2](void) { exec2.initThread(); }, std::ref(barrier), std::ref(exec2));
+
   }
 };
 
@@ -522,6 +751,11 @@ struct ChooseDoAllImpl<false> {
         },
         std::make_tuple());
   }
+
+  template <typename R, typename F1, typename F2, typename ArgsT>
+  static void call_do_specified(const R& range, F1&& func1, int numThreads1, F2&& func2, int numThreads2, const ArgsT& argsTuple){
+
+  }
 };
 
 } // end namespace internal
@@ -552,6 +786,39 @@ void do_all_gen(const R& range, F&& func, const ArgsTuple& argsTuple) {
 
   timer.stop();
 }
+
+/* Added by Chinmay */
+template <typename R, typename F1, typename F2, typename ArgsTuple>
+void do_specified_gen(const R& range, F1&& func1, int numThreads1, F2&& func2, int numThreads2, const ArgsTuple& argsTuple){
+
+  static_assert(!has_trait<char*, ArgsTuple>(), "old loopname");
+  static_assert(!has_trait<char const*, ArgsTuple>(), "old loopname");
+  static_assert(!has_trait<bool, ArgsTuple>(), "old steal");
+
+  std::cout << "do_specified_gen: range.local_end - local_begin = "<< range.local_end() - range.local_begin()<< std::endl;
+
+  auto argsT = std::tuple_cat(
+      argsTuple,
+      get_default_trait_values(argsTuple, std::make_tuple(chunk_size_tag{}),
+                               std::make_tuple(chunk_size<>{})));
+
+  using ArgsT = decltype(argsT);
+
+  constexpr bool TIME_IT = has_trait<loopname_tag, ArgsT>();
+  CondStatTimer<TIME_IT> timer(galois::internal::getLoopName(argsT));
+
+  timer.start();
+
+  constexpr bool STEAL = has_trait<steal_tag, ArgsT>();
+
+  OperatorReferenceType<decltype(std::forward<F1>(func1))> func_ref1 = func1;
+  OperatorReferenceType<decltype(std::forward<F2>(func2))> func_ref2 = func2;
+
+  internal::ChooseDoAllImpl<STEAL>::call_do_specified(range, func_ref1, numThreads1, func_ref2, numThreads2, argsT);
+
+  timer.stop();
+}
+
 
 } // namespace galois::runtime
 

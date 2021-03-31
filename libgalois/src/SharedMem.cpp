@@ -31,18 +31,33 @@ galois::substrate::SharedMem::SharedMem() {
   // which is valid only after setThreadPool() above
   m_biPtr   = std::make_unique<internal::BarrierInstance<>>();
   m_termPtr = std::make_unique<internal::LocalTerminationDetection<>>();
+  //Added by Chinmay
+  m_termPtrWorkload1 = std::make_unique<internal::LocalTerminationDetection<>>();
+  m_termPtrWorkload2 = std::make_unique<internal::LocalTerminationDetection<>>();
 
   internal::setBarrierInstance(m_biPtr.get());
   internal::setTermDetect(m_termPtr.get());
+  //Added by Chinmay
+  internal::setTermDetectWorkload1(m_termPtrWorkload1.get());
+  internal::setTermDetectWorkload2(m_termPtrWorkload2.get());
 }
 
 galois::substrate::SharedMem::~SharedMem() {
   internal::setTermDetect(nullptr);
+  //Added by Chinmay
+  internal::setTermDetectWorkload1(nullptr);
+  internal::setTermDetectWorkload2(nullptr);
+
   internal::setBarrierInstance(nullptr);
+  
 
   // destructors can call getThreadPool(), hence must be destroyed before
   // setThreadPool() below
   m_termPtr.reset();
+  //Added by Chinmay
+  m_termPtrWorkload1.reset();
+  m_termPtrWorkload2.reset();
+  
   m_biPtr.reset();
 
   internal::setThreadPool(nullptr);

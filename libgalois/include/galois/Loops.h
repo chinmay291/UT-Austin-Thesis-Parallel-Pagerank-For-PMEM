@@ -67,20 +67,24 @@ void for_each(const RangeFunc& rangeMaker, FunctionTy&& fn,
  * @param fn operator
  * @param args optional arguments to loop
  */
+/* Added by Chinmay: Remove if not required
+*/
+// template <int, int, typename RangeFunc, typename FunctionTy, FunctionTy, typename... Args>
+template <typename RangeFunc, typename FunctionTy1, typename FunctionTy2, typename... Args>
+void do_specified(int NumThreads1, int NumThreads2, const RangeFunc& rangeMaker, FunctionTy1&& fn1, FunctionTy2&& fn2, const Args&... args) {
+  printf("Loops.h: Calling Chinmay's do_all\n");
+  auto tpl = std::make_tuple(args...);
+  runtime::do_specified_gen(rangeMaker(tpl), std::forward<FunctionTy1>(fn1), NumThreads1, std::forward<FunctionTy2>(fn2), NumThreads2, tpl);
+}
+
 template <typename RangeFunc, typename FunctionTy, typename... Args>
 void do_all(const RangeFunc& rangeMaker, FunctionTy&& fn, const Args&... args) {
+  printf("Loops.h: Calling standard do_all\n");
   auto tpl = std::make_tuple(args...);
   runtime::do_all_gen(rangeMaker(tpl), std::forward<FunctionTy>(fn), tpl);
 }
 
 
-/* Added by Chinmay: Remove if not required
-template <typename RangeFunc, typename FunctionTy, typename... Args>
-void do_specified(const RangeFunc& rangeMaker1, FunctionTy&& fn1, int NumThreads1, const RangeFunc& rangeMaker2, FunctionTy&& fn2, int NumThreads2, const Args&... args) {
-  auto tpl = std::make_tuple(args...);
-  runtime::do_specified_gen(rangeMaker1(tpl), std::forward<FunctionTy>(fn1), NumThreads1, rangeMaker2(tpl), std::forward<FunctionTy>(fn2), NumThreads2, tpl);
-}
-*/
 
 /**
  * Low-level parallel loop. Operator is applied for each running thread.

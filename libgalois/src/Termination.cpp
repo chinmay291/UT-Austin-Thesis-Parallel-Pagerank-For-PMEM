@@ -24,6 +24,9 @@
 galois::substrate::TerminationDetection::~TerminationDetection(void) {}
 
 static galois::substrate::TerminationDetection* TERM = nullptr;
+//Added by Chinmay
+static galois::substrate::TerminationDetection* TERM1 = nullptr;
+static galois::substrate::TerminationDetection* TERM2 = nullptr;
 
 void galois::substrate::internal::setTermDetect(
     galois::substrate::TerminationDetection* t) {
@@ -34,5 +37,33 @@ void galois::substrate::internal::setTermDetect(
 galois::substrate::TerminationDetection&
 galois::substrate::getSystemTermination(unsigned activeThreads) {
   TERM->init(activeThreads);
+  printf("Termination.cpp: TERM->init complete\n");
   return *TERM;
+}
+
+//Added by Chinmay
+galois::substrate::TerminationDetection&
+galois::substrate::getSystemTerminationWorkload1(unsigned activeThreads) {
+  TERM1->init(activeThreads);
+  printf("Termination.cpp: TERM1->init complete\n");
+  return *TERM1;
+}
+
+galois::substrate::TerminationDetection&
+galois::substrate::getSystemTerminationWorkload2(unsigned activeThreads) {
+  TERM2->init(activeThreads);
+  printf("Termination.cpp: TERM2->init complete\n");
+  return *TERM2;
+}
+
+void galois::substrate::internal::setTermDetectWorkload1(
+    galois::substrate::TerminationDetection* t) {
+  GALOIS_ASSERT(!(TERM1 && t), "Double initialization of TerminationDetection1");
+  TERM1 = t;
+}
+
+void galois::substrate::internal::setTermDetectWorkload2(
+    galois::substrate::TerminationDetection* t) {
+  GALOIS_ASSERT(!(TERM2 && t), "Double initialization of TerminationDetection2");
+  TERM2 = t;
 }
