@@ -1148,9 +1148,9 @@ int main(int argc, char** argv) {
   galois::reportPageAlloc("MeminfoPre");
 
   // Graph* chinzptr = &transposeGraph;
-  Graph chinzgraphs[2];
-  galois::graphs::readGraph(chinzgraphs[0], inputFile);
-  galois::graphs::readGraph(chinzgraphs[1], inputFile);
+  // Graph chinzgraphs[2];
+  // galois::graphs::readGraph(chinzgraphs[0], inputFile);
+  // galois::graphs::readGraph(chinzgraphs[1], inputFile);
 
   std::atomic<int>firstInt(0);
   std::atomic<int>secondInt(0);
