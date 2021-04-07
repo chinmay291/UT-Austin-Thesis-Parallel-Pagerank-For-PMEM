@@ -62,8 +62,6 @@ class DoAllStealingExec {
     Iter shared_end;
     Diff_ty m_size;
     size_t num_iter;
-    //Added by Chinmay
-    // unsigned workloadType;
 
     // Stats
 
@@ -79,17 +77,11 @@ class DoAllStealingExec {
         : work_mutex(), id(id), shared_beg(beg), shared_end(end),
           m_size(std::distance(beg, end)), num_iter(0) {
             // printf("Executor_DoAll: Custom constructor of ThreadContext called. id = %u\n", id);
+            // std::cout << "m_size = " << m_size << std::endl;   
           }
-
-    // ThreadContext(unsigned id, Iter beg, Iter end, int wlt)
-    //     : work_mutex(), id(id), shared_beg(beg), shared_end(end),
-    //       m_size(std::distance(beg, end)), num_iter(0) {
-    //         workloadType = wlt;
-    //       }
 
     bool doWork(F func, const unsigned chunk_size) {
       Iter beg(shared_beg);
-      printf("Got beg for tid = %u\n",substrate::ThreadPool::getTID());
       Iter end(shared_end);
 
       bool didwork = false;
@@ -123,14 +115,15 @@ class DoAllStealingExec {
         }
       }
       work_mutex.unlock();
-
+      if(ret){
+        printf("hasWork() is true for tid %u\n",substrate::ThreadPool::getTID());
+      }
       return ret;
     }
 
   private:
     bool getWork(Iter& priv_beg, Iter& priv_end, const unsigned chunk_size) {
       bool succ = false;
-      printf("Inside getWork for tid - %u\n", substrate::ThreadPool::getTID());
 
       work_mutex.lock();
       {
@@ -154,7 +147,6 @@ class DoAllStealingExec {
         }
       }
       work_mutex.unlock();
-      printf("Exiting getWork for tid - %u\n", substrate::ThreadPool::getTID());
       return succ;
     }
 
@@ -297,7 +289,6 @@ private:
         if (workers.getRemote(t)->hasWorkWeak()) {
           sawWork = true;
 
-          // printf("Transfering work within socket for tid = %u\n",substrate::ThreadPool::getTID());
           stoleWork = transferWork(*workers.getRemote(t), poor, HALF);
 
           if (stoleWork) {
@@ -320,21 +311,17 @@ private:
     // unsigned maxT = LL::getMaxThreads ();
     unsigned maxT = galois::getActiveThreads();
 
-    // printf("Starting check for stealOutsideSocket for tid = %u. maxT = %u\n",substrate::ThreadPool::getTID(), maxT);
     for (unsigned i = 0; i < maxT; ++i) {
       ThreadContext& rich = *(workers.getRemote((poor.id + i) % maxT));
-      // printf("stealOutsideSocket: Got rich tcx\n");
+
       /* Next if condition added by Chinmay */
       if(workloadTypes[rich.id] == 0 || workloadTypes[rich.id] != workloadTypes[poor.id]){
         continue;
       }
 
       if (tp.getSocket(rich.id) != myPkg) {
-        // printf("stealOutsideSocket: Potential thread to steal from found\n");
         if (rich.hasWorkWeak()) {
           sawWork = true;
-
-          // printf("Transfering work within socket for tid = %u\n",substrate::ThreadPool::getTID());
           stoleWork = transferWork(rich, poor, amt);
           // stoleWork = transferWork (rich, poor, HALF);
 
@@ -344,22 +331,17 @@ private:
         }
       }
     }
-    // printf("stealOutsideSocket: Finished\n");
     return sawWork || stoleWork;
   }
 
   GALOIS_ATTRIBUTE_NOINLINE bool trySteal(ThreadContext& poor) {
     bool ret = false;
 
-    // printf("Inside trySteal for tid = %u\n",substrate::ThreadPool::getTID());
     ret = stealWithinSocket(poor);
-    // printf("Finished stealWithinSocket for tid = %u\n",substrate::ThreadPool::getTID());
-
     if (ret) {
       return true;
     }
 
-    // printf("Calling asmPause() for tid = %u\n",substrate::ThreadPool::getTID());
     substrate::asmPause();
 
     if (substrate::getThreadPool().isLeader(poor.id)) {
@@ -371,9 +353,7 @@ private:
       substrate::asmPause();
     }
 
-    // printf("Calling stealOutsideSocket for tid = %u\n",substrate::ThreadPool::getTID());
     ret = stealOutsideSocket(poor, HALF);
-    // printf("Finished stealOutsideSocket for tid = %u\n",substrate::ThreadPool::getTID());
     if (ret) {
       return true;
     }
@@ -385,21 +365,15 @@ private:
 private:
   R range;
   F func;
-  /*
-  F func1;
-  F func2;
-  int numThreads1;
-  int numThreads2;
-  */
   const char* loopname;
   Diff_ty chunk_size;
+  substrate::PerThreadStorage<ThreadContext> workers;
   //Added by Chinmay
   std::vector<int> workloadTypes;
-  Iter lb;
-  Iter le;
-  int numThreads;
+  int numThreads1;
+  int numThreads2;
   std::vector<std::pair<Iter, Iter>> ranges;
-  substrate::PerThreadStorage<ThreadContext> workers;
+  
 
   substrate::TerminationDetection& term;
 
@@ -421,17 +395,13 @@ public:
         termTime(loopname, "Term") {
 
         assert(chunk_size > 0);
-        //Added by Chinmay
-        // lb = range.local_begin();
-        // le = range.local_end();
-        // printf("DoAllStealingExec constructor: lb, le set\n");
         for(unsigned int i = 0; i < galois::getActiveThreads(); i++){
           workloadTypes.push_back(0);
         }
   }
 
   //Added by Chinmay
-  DoAllStealingExec(int which, int _numThreads, const R& _range, F _func, const ArgsTuple& argsTuple)
+  DoAllStealingExec(int which, int _numThreads1, int _numThreads2, const R& _range, F _func, const ArgsTuple& argsTuple)
       : range(_range), func(_func),
         loopname(galois::internal::getLoopName(argsTuple)),
         chunk_size(get_trait_value<chunk_size_tag>(argsTuple).value),
@@ -442,7 +412,10 @@ public:
 
         assert(chunk_size > 0);
         //Added by Chinmay
-        numThreads = _numThreads;
+        numThreads1 = _numThreads1;
+        numThreads2 = _numThreads2;
+
+        int numThreads = which == 1 ? _numThreads1 : numThreads2;
         for(unsigned int i = 0; i < galois::getActiveThreads(); i++){
           workloadTypes.push_back(0);
         }
@@ -451,103 +424,69 @@ public:
         auto size = (range.end() - range.begin()) / numThreads;
         for(int i = 0; i < numThreads; i++){
           if(i == numThreads -1){
-              ranges.push_back(std::make_pair(beg + size*i, range.end()));  
+              ranges.push_back(std::make_pair(beg + size*i, range.end()));
+              // std::cout << "Range distance: " << std::distance(ranges[ranges.size()-1].first, ranges[ranges.size()-1].second) << std::endl; 
           }
           else{
-              ranges.push_back(std::make_pair(beg + size*i, beg + size*(i+1)));  
+              ranges.push_back(std::make_pair(beg + size*i, beg + size*(i+1))); 
+              // std::cout << "Range distance: " << std::distance(ranges[ranges.size()-1].first, ranges[ranges.size()-1].second) << std::endl; 
           }
         }
   }
 
-/*
-  DoAllStealingExec(const R& _range, int _numThreads1, F _func1, int _numThreads2, F _func2, const ArgsTuple& argsTuple)
-      : range(_range), func1(_func1), func2(_func2), numThreads1(_numThreads1), numThreads2(_numThreads2),
-        loopname(galois::internal::getLoopName(argsTuple)),
-        chunk_size(get_trait_value<chunk_size_tag>(argsTuple).value),
-        term(substrate::getSystemTermination(activeThreads)),
-        totalTime(loopname, "Total"), initTime(loopname, "Init"),
-        execTime(loopname, "Execute"), stealTime(loopname, "Steal"),
-        termTime(loopname, "Term") {
-    assert(chunk_size > 0);
-  }
-*/
 
   // parallel call
   void initThread(void) {
     initTime.start();
-    // printf("Executor_DoAll: initTime started\n");
 
     term.initializeThread();  
-    
-    // printf("Executor_DoAll: term.initializeThread() complete\n");
 
     unsigned id = substrate::ThreadPool::getTID();
 
-    // try{
-    //   printf("Inisde try{}\n");
-    //   // Iter temp;
-    //   auto temp = lb;
-    //   temp++;
-
-    //   auto tcx = ThreadContext(id, lb, le);
-    //   printf("tcx set up\n");
-    //   tcx.id++;
-    // }
-    // catch(const char* message){
-    //   std::cerr << message << std::endl;
-    // }
-    // printf("temp Test complete\n");
-    // *workers.getLocal(id) =
-    //     ThreadContext(id, range.local_begin(), range.local_end());
-    
-    // auto tcx1 = ThreadContext(id, lb, le);
-    // printf("tcx1 set up\n");
-    // ThreadContext& myvar = *workers.getLocal(id);
-    // printf("myvar fetched\n");
-    // std::cout << "myvar.hasWorkWeak() = " << myvar.hasWorkWeak() << std::endl;
-    // *workers.getLocal(id) = ThreadContext(id, lb, le);
     *workers.getLocal(id) = ThreadContext(id, range.local_begin(), range.local_end());
-    // printf("Executor_DoAll: worker set up complete\n");
 
     initTime.stop();
   }
 
   /* Added by Chinmay */
   void initThread(int workloadType) {
-    printf("Inside initThread() in Executor_DoAll.h\n");
+    // printf("Inside initThread() in Executor_DoAll.h\n");
     initTime.start();
 
     term.initializeThread();
 
     unsigned id = substrate::ThreadPool::getTID();
-    printf("term.initializeThread() complete fpr tid = %u\n", id);
+    // printf("term.initializeThread() complete fpr tid = %u\n", id);
 
     workloadTypes[id] = workloadType;
 
-    // std::cout << "initThread: range.local_end - local_begin = "<< range.local_end() - range.local_begin()<< std::endl;
-    
-/* We use range.begin() and range.end() to initialize ThreadContext instead of
-range.local_begin() and range.local_end() because then the whole range does not
-get covered by the threads executing one type of workload.
-ie. the range is split up among 4 threads if there are max 4 threads avail on the system
-and if only 2 threads exec a workload and they use local_begin() and local_end(), then the whole
-range will not be covered
-*/
-    // *workers.getLocal(id) = ThreadContext(id, range.local_begin(), range.local_end());
-    // auto& tp = substrate::getThreadPool();
-    // int index = tp.getTIDIndex(workloadType, id);
+      
+  /* We use elements of the vector ranges to initialize ThreadContext instead of
+  range.local_begin() and range.local_end() because then the whole range does not
+  get covered by the threads executing one type of workload.
+  ie. the range is split up among 4 threads if there are max 4 threads avail on the system
+  and if only 2 threads exec a workload and they use local_begin() and local_end(), then the whole
+  range will not be covered
+  */
     int index;
     if(workloadType == 1){
       index = id;
     }
     else{
-      index = id - numThreads;
+      index = id - numThreads1;
+      // printf("Index = %d\n", index);
     }
     *workers.getLocal(id) = ThreadContext(id, ranges[index].first, ranges[index].second);
-    // std::cout << "Range for tid = " << id << " is = " << std::distance(ranges[index].first, ranges[index].second) << std::endl;
+    // ThreadContext& ctx = *workers.getLocal();
+    // if(workloadTypes[substrate::ThreadPool::getTID()] == 2){
+    //   std::cout << "m_size = " << ctx.m_size << std::endl;   
+    // }
+
 
     initTime.stop();
-    printf("initThread() completed for tid = %u\n", id);
+    if(workloadType == 2){
+      // printf("initThread() completed for tid = %u\n", id);  
+    }
   }
 
   ~DoAllStealingExec() {
@@ -564,10 +503,11 @@ range will not be covered
 
   void operator()(void) {
 
-
-    printf("Executor_DoAll: Called overloaded operator () for tid = %u\n",substrate::ThreadPool::getTID());
     ThreadContext& ctx = *workers.getLocal();
-    printf("Got ctx for tid = %u\n",substrate::ThreadPool::getTID());
+    // if(workloadTypes[substrate::ThreadPool::getTID()] == 2){
+    //   std::cout << "m_size = " << ctx.m_size << std::endl;   
+    // }
+    
     totalTime.start();
 
     while (true) {
@@ -575,11 +515,8 @@ range will not be covered
 
       execTime.start();
 
-      // std::cout << "m_size = " << ctx.m_size << " , tid = " << substrate::ThreadPool::getTID() << std::endl;
-      printf("Calling doWork() = %u\n",substrate::ThreadPool::getTID());
       if (ctx.doWork(func, chunk_size)){
         workHappened = true;
-        printf("doWork() finished for tid = %u\n",substrate::ThreadPool::getTID());
       }
 
       execTime.stop();
@@ -587,16 +524,13 @@ range will not be covered
       assert(!ctx.hasWork());
 
       stealTime.start();
-      printf("Trying steal for tid = %u\n", substrate::ThreadPool::getTID());
       bool stole = trySteal(ctx);
-      printf("Finished trySteal for tid = %u\n", substrate::ThreadPool::getTID());
       stealTime.stop();
 
       if (stole) {
-        printf("Steal successful for tid = %u\n", substrate::ThreadPool::getTID());
         continue;
-
-      } else {
+      } 
+      else {
         assert(!ctx.hasWork());
         
         if (USE_TERM) {
@@ -615,6 +549,7 @@ range will not be covered
     }
 
     totalTime.stop();
+    // printf("Thread %u finished its work\n", substrate::ThreadPool::getTID());
     assert(!ctx.hasWork());
 
     if (NEED_STATS) {
@@ -641,25 +576,20 @@ struct ChooseDoAllImpl {
   }
 
   /* Added by Chinmay */
-
-  template <typename R, typename F1, typename F2, typename ArgsT>
-  static void call_do_specified(const R& range, F1&& func1, int numThreads1, F2&& func2, 
-    int numThreads2, const ArgsT& argsTuple) {
-
-    std::cout << "call_do_specified: range.local_end - local_begin = "<< range.local_end() - range.local_begin()<< std::endl;
-    std::cout << "call_do_specified: range.end - begin = "<< range.end() - range.begin()<< std::endl;
+  template <typename R1, typename R2, typename F1, typename F2, typename ArgsT>
+  static void call_do_specified(const R1& range1, const R2& range2, F1&& func1, 
+    int numThreads1, F2&& func2,  int numThreads2, const ArgsT& argsTuple) {
 
     internal::DoAllStealingExec<
-        R, OperatorReferenceType<decltype(std::forward<F1>(func1))>, ArgsT>
-        exec1(1, numThreads1, range, std::forward<F1>(func1), argsTuple);
+        R1, OperatorReferenceType<decltype(std::forward<F1>(func1))>, ArgsT>
+        exec1(1, numThreads1, numThreads2, range1, std::forward<F1>(func1), argsTuple);
 
     internal::DoAllStealingExec<
-        R, OperatorReferenceType<decltype(std::forward<F2>(func2))>, ArgsT>
-        exec2(2, numThreads2, range, std::forward<F2>(func2), argsTuple);
+        R2, OperatorReferenceType<decltype(std::forward<F2>(func2))>, ArgsT>
+        exec2(2, numThreads1, numThreads2, range2, std::forward<F2>(func2), argsTuple);
 
     substrate::Barrier& barrier = getBarrier(activeThreads);
 
-    // printf("Executor_DoAll: call_do_specified: numThreads1 = %d, numThreads2 = %d\n",numThreads1,numThreads2);
 
     // std::function<void(void)> init1 = [&exec1](void) { exec1.initThread(1); };
     // std::function<void(void)> init2 = [&exec2](void) { exec2.initThread(2); };
@@ -675,41 +605,6 @@ struct ChooseDoAllImpl {
     substrate::getThreadPool().run_do_specified(
         numThreads1, numThreads2, [&exec1](void) { exec1.initThread(1); }, std::ref(barrier), std::ref(exec1),
         [&exec2](void) { exec2.initThread(2); }, std::ref(barrier), std::ref(exec2));
-
-    //for debugging
-    // substrate::getThreadPool().run(
-    //     numThreads1, [&exec1](void) { exec1.initThread(1); }, std::ref(barrier),
-    //     std::ref(exec1));
-
-    // printf("Executor_DoAll: DEBUGGING COMPLETE(line 605)\n");
-
-    // substrate::getThreadPool().setWork(
-    //     numThreads1, 1, [&exec1](void) { exec1.initThread(1); }, std::ref(barrier),
-    //     std::ref(exec1));
-
-    // if(numThreads2 > 0){
-    //   substrate::getThreadPool().setWork(
-    //     numThreads2, 2, [&exec2](void) { exec2.initThread(2); }, std::ref(barrier),
-    //     std::ref(exec2));  
-    // }
-
-    // substrate::getThreadPool().run();
-
-    // For debugging
-    // internal::DoAllStealingExec<
-    //     R, OperatorReferenceType<decltype(std::forward<F2>(func2))>, ArgsT>
-    //     exec2(range, std::forward<F2>(func2), argsTuple);
-
-    // if(numThreads2 > 0){
-    //   substrate::getThreadPool().setWork(
-    //     numThreads2, 2, [&exec2](void) { exec2.initThread(); }, std::ref(barrier),
-    //     std::ref(exec2));  
-    // }
-
-    // substrate::getThreadPool().run_do_specified(
-    //     numThreads1, numThreads2, [&exec1](void) { exec1.initThread(); }, std::ref(barrier), std::ref(exec1),
-    //     [&exec2](void) { exec2.initThread(); }, std::ref(barrier), std::ref(exec2));
-
   }
 };
 
@@ -761,8 +656,14 @@ struct ChooseDoAllImpl<false> {
         std::make_tuple());
   }
 
-  template <typename R, typename F1, typename F2, typename ArgsT>
-  static void call_do_specified(const R& range, F1&& func1, int numThreads1, F2&& func2, int numThreads2, const ArgsT& argsTuple){
+  // template <typename R, typename F1, typename F2, typename ArgsT>
+  // static void call_do_specified(const R& range, F1&& func1, int numThreads1, F2&& func2, int numThreads2, const ArgsT& argsTuple){
+
+  // }
+
+  template <typename R1, typename R2, typename F1, typename F2, typename ArgsT>
+  static void call_do_specified(const R1& range1, const R2& range2, F1&& func1, 
+    int numThreads1, F2&& func2,  int numThreads2, const ArgsT& argsTuple){
 
   }
 };
@@ -797,14 +698,15 @@ void do_all_gen(const R& range, F&& func, const ArgsTuple& argsTuple) {
 }
 
 /* Added by Chinmay */
-template <typename R, typename F1, typename F2, typename ArgsTuple>
-void do_specified_gen(const R& range, F1&& func1, int numThreads1, F2&& func2, int numThreads2, const ArgsTuple& argsTuple){
+template <typename R1, typename R2, typename F1, typename F2, typename ArgsTuple>
+void do_specified_gen(const R1& range1, const R2& range2, F1&& func1, 
+  int numThreads1, F2&& func2, int numThreads2, const ArgsTuple& argsTuple){
 
   static_assert(!has_trait<char*, ArgsTuple>(), "old loopname");
   static_assert(!has_trait<char const*, ArgsTuple>(), "old loopname");
   static_assert(!has_trait<bool, ArgsTuple>(), "old steal");
 
-  std::cout << "do_specified_gen: range.local_end - local_begin = "<< range.local_end() - range.local_begin()<< std::endl;
+  // std::cout << "do_specified_gen: range.local_end - local_begin = "<< range.local_end() - range.local_begin()<< std::endl;
 
   auto argsT = std::tuple_cat(
       argsTuple,
@@ -823,7 +725,8 @@ void do_specified_gen(const R& range, F1&& func1, int numThreads1, F2&& func2, i
   OperatorReferenceType<decltype(std::forward<F1>(func1))> func_ref1 = func1;
   OperatorReferenceType<decltype(std::forward<F2>(func2))> func_ref2 = func2;
 
-  internal::ChooseDoAllImpl<STEAL>::call_do_specified(range, func_ref1, numThreads1, func_ref2, numThreads2, argsT);
+  internal::ChooseDoAllImpl<STEAL>::call_do_specified(range1, range2, func_ref1, 
+    numThreads1, func_ref2, numThreads2, argsT);
 
   timer.stop();
 }

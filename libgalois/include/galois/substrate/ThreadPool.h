@@ -177,6 +177,7 @@ public:
     // std::cout << "runInternal complete" << std::endl;
   }
 
+  //Added by Chinmay
   template <typename... splitArgs>
     struct ExecuteTuple {
       //      using Ty = std::tuple<Args...>;
@@ -194,110 +195,29 @@ public:
   template <typename... Args>
   void run_do_specified(int num1, int num2, Args&&... args) {
     
-    // template <typename... splitArgs>
-    // struct ExecuteTuple {
-    //   //      using Ty = std::tuple<Args...>;
-    //   std::tuple<splitArgs...> cmds;
-
-    //   void operator()() {
-    //     internal::ExecuteTupleImpl<
-    //         std::tuple<splitArgs...>, 0,
-    //         std::tuple_size<std::tuple<splitArgs...>>::value>::execute(this->cmds);
-    //   }
-
-    //   ExecuteTuple(splitArgs&&... ags) : cmds(std::forward<splitArgs>(ags)...) {}
-
-      // ExecuteTuple(std::function<void(void)>& w1, std::function<void(void)>& w2 ,Args&&... args) 
-      // : cmds(std::forward<Args>(args)...) {
-      //   auto tpl1 = std::make_tuple(std::get<0>cmds,std::get<1>cmds,std::get<2>cmds);
-      //   auto tpl2 = std::make_tuple(std::get<3>cmds,std::get<4>cmds,std::get<5>cmds);
-      //   w1 = std::ref(tpl1);  
-      // }
-
-      // void set_work(std::function<void(void)>& w1, std::function<void(void)>& w2){
-      //   auto tpl1 = std::make_tuple(std::get<0>cmds,std::get<1>cmds,std::get<2>cmds);
-      //   auto tpl2 = std::make_tuple(std::get<3>cmds,std::get<4>cmds,std::get<5>cmds);
-      //   // ExecuteTuple lwork1 = 
-      //   //  std::apply([](auto&&... args2) { return ExecuteTuple{std::forward<decltype(args2)>(args2)...}; }, args);
-      //   ExecuteTuple lwork1 = std::make_from_tuple<ExecuteTuple>(std::forward<decltype(tpl1)>(tpl1));
-      //   ExecuteTuple lwork2 = std::make_from_tuple<ExecuteTuple>(std::forward<decltype(tpl2)>(tpl2));
-      // }
-    // };
     // paying for an indirection in work allows small-object optimization in
     // std::function to kick in and avoid a heap allocation
     auto tpl = std::tuple<Args...>(args...);
 
-    // auto tpl1 = std::make_tuple(std::get<0>(tpl),std::get<1>(tpl),std::get<2>(tpl));
-    // ExecuteTuple lwork1 = std::make_from_tuple<ExecuteTuple>(std::forward<decltype(tpl1)>(tpl1)...);
-    // ExecuteTuple lwork1 = std::make_from_tuple<ExecuteTuple>(tpl1);
     ExecuteTuple lwork1(std::move<decltype(std::get<0>(tpl))>(std::get<0>(tpl)),
       std::move<decltype(std::get<1>(tpl))>(std::get<1>(tpl)),
       std::move<decltype(std::get<2>(tpl))>(std::get<2>(tpl)));
+    
     work1 = std::ref(lwork1);
 
     if(num2 > 0){
-      // auto tpl2 = std::make_tuple(std::get<3>(tpl),std::get<4>(tpl),std::get<5>(tpl));
-      // ExecuteTuple lwork2 = std::make_from_tuple<ExecuteTuple>(std::forward<decltype(tpl2)>(tpl2)...);
-      // ExecuteTuple lwork2 = std::make_from_tuple<ExecuteTuple>(tpl2);
-      // ExecuteTuple lwork2(std::get<3>(tpl),std::get<4>(tpl),std::get<5>(tpl));
-      // printf("ThreadPool.h: num2 > 0 so setting up work2\n");
       ExecuteTuple lwork2(std::move<decltype(std::get<3>(tpl))>(std::get<3>(tpl)),
       std::move<decltype(std::get<4>(tpl))>(std::get<4>(tpl)),
       std::move<decltype(std::get<5>(tpl))>(std::get<5>(tpl)));
+      
       work2 = std::ref(lwork2);
-      // printf("ThreadPool.h: work2 has been set up\n");  
     }
   
     numThreads1 = num1;
     numThreads2 = num2;
 
-    // for(int i = 0; i < numThreads1; i++){
-    //   // printf("Pushed %d into work1_tids\n",i);
-    //   work1_tids.push_back(i);
-    // }
-    // for(int i = numThreads1; i < numThreads1 + numThreads2; i++){
-    //   work2_tids.push_back(i);
-    //   // printf("Pushed %d into work2_tids. Printing it: %d\n",i, work2_tids[0]);
-    // }
-    
-    // assert(num <= getMaxThreads());
-    // printf("Calling runInternal\n");
     runInternal();
-    // printf("runInternal complete\n");
   }
-
-
-
-  // template <typename... Args>
-  // void setWork(int num, int which, Args&&... args) {
-
-  //   struct ExecuteTuple {
-  //     //      using Ty = std::tuple<Args...>;
-  //     std::tuple<Args...> cmds;
-
-  //     void operator()() {
-  //       internal::ExecuteTupleImpl<
-  //           std::tuple<Args...>, 0,
-  //           std::tuple_size<std::tuple<Args...>>::value>::execute(this->cmds);
-  //     }
-  //     ExecuteTuple(Args&&... args) : cmds(std::forward<Args>(args)...) {}
-  //   };
-    
-  //   ExecuteTuple lwork(std::forward<Args>(args)...);
-    
-  //   if(which == 1){
-  //     work1 = std::ref(lwork);
-  //     numThreads1 = num;
-
-  //     //For debugging
-  //     // runInternal(); 
-  //     // printf("ThreadPool.h: DEBUGGING COMPLETE(LINE 214)\n"); 
-  //   }
-  //   else if(which == 2){
-  //     work2 = std::ref(lwork);
-  //     numThreads2 = num; 
-  //   }
-  // }
 
   /*
   template <typename F2, typename F3, typename F5, typename F6>
@@ -375,11 +295,11 @@ public:
   }
   */
 
-/* Added by Chinmay */
+/* Added by Chinmay 
   void run() {
     runInternal();
   }
-
+*/
   //Added by Chinmay
   // int getTIDIndex(int workloadType, unsigned id){
   //   int index = 0;

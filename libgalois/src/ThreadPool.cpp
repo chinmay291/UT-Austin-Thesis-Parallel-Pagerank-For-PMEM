@@ -136,7 +136,7 @@ void ThreadPool::threadLoop(unsigned tid) {
   do {
     me.wait(fastmode);
     cascade(fastmode);
-    printf("ThreadPool.cpp: Inside THREADLOOP for tid = %u\n",tid);
+    //Modified by Chinmay
     try {
       if(work != nullptr){
         work();
@@ -163,14 +163,10 @@ void ThreadPool::threadLoop(unsigned tid) {
         //   printf("Completed work2()\n");
         // }    
         if(getTID() < (unsigned int)numThreads1){
-          printf("Calling work1()\n");
           work1();  
-          printf("Completed work1()\n");
         }
         else{
-          printf("Calling work2()\n");
           work2();
-          printf("Completed work2()\n");
         }
       }
     } catch (const shutdown_ty&) {
@@ -214,15 +210,12 @@ void ThreadPool::decascade() {
 void ThreadPool::cascade(bool fastmode) {
   auto& me = my_box;
   assert(me.wbegin <= me.wend);
-  // printf("Cascade: TID = %u\n",getTID());
   // nothing to wake up
   if (me.wbegin == me.wend) {
-    // printf("Nothing to wake up\n");
     return;
   }
 
   auto midpoint = me.wbegin + (1 + me.wend - me.wbegin) / 2;
-  // printf("Cascade: Calculated midpoint for TID = %u\n",getTID());
 
   auto child1    = signals[me.wbegin];
   child1->wbegin = me.wbegin + 1;
@@ -235,7 +228,6 @@ void ThreadPool::cascade(bool fastmode) {
     child2->wend   = me.wend;
     child2->wakeup(fastmode);
   }
-  // printf("ThreadPool.cpp: Exiting cascade for TID = %u\n", getTID());
 }
 
 void ThreadPool::runInternal(unsigned num) {
@@ -252,7 +244,6 @@ void ThreadPool::runInternal(unsigned num) {
   assert(!masterFastmode || masterFastmode == num);
   // launch threads
   cascade(masterFastmode);
-  // printf("runInternal: TID = %u\n",getTID());
   // Do master thread work
   try {
     /* 
@@ -291,20 +282,10 @@ void ThreadPool::runInternal() {
   assert(!masterFastmode || (int)masterFastmode == numThreads1 + numThreads2);
   // launch threads
   cascade(masterFastmode);
-  // printf("runInternal: TID = %u\n",getTID());
+
   // Do master thread work
   try {
-    // printf("ThreadPool.cpp: Inside try of runInternal(line 259). tid = %u\n", getTID());
-    if(getTID() < (unsigned int)numThreads1){
-      printf("Calling work1()\n");
-      work1();  
-      printf("Completed work1()\n");
-    }
-    else{
-      printf("Calling work2()\n");
-      work2();
-      printf("Completed work2()\n");
-    }    
+    work1();
   } catch (const shutdown_ty&) {
     return;
   } catch (const fastmode_ty& fm) {

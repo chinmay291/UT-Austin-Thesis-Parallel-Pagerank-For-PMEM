@@ -70,16 +70,18 @@ void for_each(const RangeFunc& rangeMaker, FunctionTy&& fn,
 /* Added by Chinmay: Remove if not required
 */
 // template <int, int, typename RangeFunc, typename FunctionTy, FunctionTy, typename... Args>
-template <typename RangeFunc, typename FunctionTy1, typename FunctionTy2, typename... Args>
-void do_specified(int NumThreads1, int NumThreads2, const RangeFunc& rangeMaker, FunctionTy1&& fn1, FunctionTy2&& fn2, const Args&... args) {
-  printf("Loops.h: Calling Chinmay's do_all\n");
+template <typename RangeFunc1, typename RangeFunc2,typename FunctionTy1, typename FunctionTy2, typename... Args>
+void do_specified(int NumThreads1, const RangeFunc1& rangeMaker1, FunctionTy1&& fn1, 
+  int NumThreads2, const RangeFunc2& rangeMaker2, FunctionTy2&& fn2, const Args&... args) {
+  // printf("Loops.h: Calling Chinmay's do_all\n");
   auto tpl = std::make_tuple(args...);
-  runtime::do_specified_gen(rangeMaker(tpl), std::forward<FunctionTy1>(fn1), NumThreads1, std::forward<FunctionTy2>(fn2), NumThreads2, tpl);
+  runtime::do_specified_gen(rangeMaker1(tpl), rangeMaker2(tpl), std::forward<FunctionTy1>(fn1), 
+    NumThreads1, std::forward<FunctionTy2>(fn2), NumThreads2, tpl);
 }
 
 template <typename RangeFunc, typename FunctionTy, typename... Args>
 void do_all(const RangeFunc& rangeMaker, FunctionTy&& fn, const Args&... args) {
-  printf("Loops.h: Calling standard do_all\n");
+  // printf("Loops.h: Calling standard do_all\n");
   auto tpl = std::make_tuple(args...);
   runtime::do_all_gen(rangeMaker(tpl), std::forward<FunctionTy>(fn), tpl);
 }

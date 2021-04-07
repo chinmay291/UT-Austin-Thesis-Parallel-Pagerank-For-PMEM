@@ -27,6 +27,8 @@
 #include "galois/graphs/ReadGraph.h"
 #include "galois/graphs/TypeTraits.h"
 #include "galois/gstl.h"
+//For debugging
+#include "galois/substrate/ThreadPool.h"
 
 const char* desc =
     "Computes page ranks a la Page and Brin. This is a pull-style topology-driven algorithm for PM by Chinmay.";
@@ -41,7 +43,17 @@ static cll::opt<bool>
 constexpr static const unsigned CHUNK_SIZE = 32;
 constexpr static const long int EDGE_TILE_SIZE = 128;
 
-size_t cacheSize = 238100UL * 2UL;
+static cll::opt<unsigned int> t1(
+    "t1",
+    cll::desc("Number of threads for first operator of do_specified loop"),
+    cll::init(0));
+
+static cll::opt<unsigned int> t2(
+    "t2",
+    cll::desc("Number of threads for second operator of do_specified loop"),
+    cll::init(0));
+
+size_t cacheSize = 38610UL * 2UL;
 
 
 struct LNode {
@@ -964,6 +976,136 @@ void computePRTopologicalNoInsertBag(Graph& graph) {
 
 }
 
+void computePRTopologicalUsingDoSpecified(Graph& graph) {
+  std::atomic<uint64_t> computeT(0);
+  std::atomic<uint64_t> prefetchT(0);
+
+  std::cout << "COMPUTE TIME_INIT = "<< computeT << std::endl;
+  std::cout << "PREFETCH TIME_INIT = "<< prefetchT << std::endl;
+
+  constexpr const galois::MethodFlag flag = galois::MethodFlag::UNPROTECTED;
+
+  unsigned int iteration = 0;
+  galois::GAccumulator<float> accum;
+
+  float base_score = (1.0f - ALPHA) / graph.size();
+
+  unsigned int it;
+
+  galois::do_all(
+        galois::iterate(bounds[0].first, bounds[0].second),
+        [&](GNode src){
+          auto edgeBegin = graph.edge_begin(src, flag);
+          auto edgeEnd = graph.edge_end(src, flag);
+          auto cacheIndBegin = graph.edge_begin(src, flag) - graph.edge_begin(*bounds[0].first, flag);
+          auto j = cacheIndBegin;
+
+          for(auto i = edgeBegin; i < edgeEnd; i++){
+            graph.writeToCurrCache(j, graph.getEdgeDst(i));
+            j++;
+          }
+        },
+        galois::steal(),
+        galois::loopname("Prefetch data for first round"));
+
+  for(it = 1; it < maxIterations+1; it++){
+
+      for(long unsigned int i = 0; i < bounds.size(); i++){
+
+        auto itStart = bounds[i].first;
+        auto itEnd = bounds[i].second;
+        auto pfStart = itStart;
+        auto pfEnd = itEnd;
+        if(i + 1 != bounds.size()){
+          pfStart = bounds[i+1].first;
+          pfEnd = bounds[i+1].second;
+        }
+        else{
+          pfStart = bounds[0].first;
+          pfEnd = bounds[0].second;  
+        }
+        
+        
+        galois::do_specified(
+          t1, galois::iterate(itStart, itEnd),
+          [&](GNode src){
+            galois::StatTimer computeTime("Timer_Compute");
+            computeTime.start();
+
+            LNode& sdata = graph.getData(src, flag);
+            float sum    = 0.0;   
+            auto cacheIndBegin = graph.edge_begin(src, flag) - graph.edge_begin(*bounds[i].first, flag);
+            auto cacheIndEnd = graph.edge_end(src, flag) - graph.edge_begin(*bounds[i].first, flag);
+            
+            for (auto i = cacheIndBegin; i < cacheIndEnd; i++) {
+                GNode dst = graph.readFromCurrCache(i);
+
+                LNode& ddata = graph.getData(dst, flag);
+                sum += ddata.value / ddata.nout;
+            }
+
+            //! New value of pagerank after computing contributions from incoming edges in the original graph.
+            float value = sum * ALPHA + base_score;
+            //! Find the delta in new and old pagerank values.
+            float diff = std::fabs(value - sdata.value);
+
+            //! Do not update pagerank before the diff is computed since there is a data dependence on the pagerank value.
+            sdata.value = value;
+            accum += diff;
+
+            computeTime.stop();
+            computeT.fetch_add(computeTime.get_usec());
+          },
+          t2, galois::iterate(pfStart, pfEnd),
+          [&](GNode src){
+            
+            galois::StatTimer prefetchTime("Timer_Prefetch");
+            prefetchTime.start();
+            // printf("Inside prefetch operator\n");
+
+            auto edgeBegin = graph.edge_begin(src, flag);
+            auto edgeEnd = graph.edge_end(src, flag);
+            auto cacheIndBegin = graph.edge_begin(src, flag) - graph.edge_begin(*bounds[i+1].first, flag);
+            // auto cacheIndEnd = graph.edge_end(src, flag) - graph.edge_begin(*bounds[i+1].first, flag);
+            auto k = cacheIndBegin;
+            for(auto i = edgeBegin; i < edgeEnd; i++){
+              graph.writeToNextCache(k,graph.getEdgeDst(i));
+              k++;
+            }
+
+            prefetchTime.stop();
+            // std::cout << prefetchTime.get_usec() << std::endl;
+            prefetchT.fetch_add(prefetchTime.get_usec());
+          }
+          ,
+          galois::steal(), galois::chunk_size<CHUNK_SIZE>(),
+          galois::loopname("PageRank P and C"));
+
+          graph.swapCache();
+      }
+
+      
+      if (accum.reduce() <= tolerance) {
+        break;
+      }
+      accum.reset();
+      
+  }
+
+    // std::cout << "clearTime = " << clearTime.get_usec() << std::endl;  
+    // std::cout << "swapTime = " << swapTime.get_usec() << std::endl;  
+
+  std::cout << "COMPUTE TIME = "<< computeT << std::endl;
+  std::cout << "PREFETCH TIME = "<< prefetchT << std::endl;
+  
+  galois::runtime::reportStat_Single("PageRank", "ITERATIONS", it);
+  if (iteration >= maxIterations) {
+    std::cerr << "ERROR: failed to converge in " << iteration
+              << " iterations\n";
+  }
+
+}
+
 
 void prTopologicalChinmay(Graph& graph) {
   initNodeDataTopological(graph);
@@ -973,7 +1115,7 @@ void prTopologicalChinmay(Graph& graph) {
 
   galois::StatTimer execTime("Timer_0");
   execTime.start();
-  computePRTopologicalNoInsertBag(graph);
+  computePRTopologicalUsingDoSpecified(graph);
   execTime.stop();
 }
 
@@ -1005,6 +1147,11 @@ int main(int argc, char** argv) {
                                         galois::runtime::pagePoolSize());
   galois::reportPageAlloc("MeminfoPre");
 
+  // Graph* chinzptr = &transposeGraph;
+  Graph chinzgraphs[2];
+  galois::graphs::readGraph(chinzgraphs[0], inputFile);
+  galois::graphs::readGraph(chinzgraphs[1], inputFile);
+
   std::atomic<int>firstInt(0);
   std::atomic<int>secondInt(0);
   // galois::do_all(
@@ -1015,26 +1162,40 @@ int main(int argc, char** argv) {
   //       }, 
   //       galois::steal(),
   //       galois::loopname("Bina Kaam ka loop"));
-  
+/*
   printf("Main: calling do_specified\n");
   galois::do_specified(
-        2, 2, 
-        galois::iterate(transposeGraph),
+        t1, galois::iterate(chinzgraphs[0]),
         [&](GNode src){
-          transposeGraph.getData(src).value = 0;
+          chinzgraphs[0].getData(src).value = 0;
+          auto edgeBegin = chinzgraphs[0].edge_begin(src, galois::MethodFlag::UNPROTECTED);
+          auto edgeEnd = chinzgraphs[0].edge_end(src, galois::MethodFlag::UNPROTECTED);
+          for(auto i = edgeBegin; i < edgeEnd; i++){
+              GNode dest = chinzgraphs[0].getEdgeDst(i);
+              chinzgraphs[0].getData(dest).value = 1;
+            }
           firstInt.fetch_add(1);
         }, 
+        t2, galois::iterate(chinzgraphs[1]),
         [&](GNode src){
-          transposeGraph.getData(src).value = 0;
+          // printf("Inside operator 2 for tid = %u\n",galois::substrate::ThreadPool::getTID());
+          chinzgraphs[1].getData(src).value = 0;
+          auto edgeBegin = chinzgraphs[1].edge_begin(src, galois::MethodFlag::UNPROTECTED);
+          auto edgeEnd = chinzgraphs[1].edge_end(src, galois::MethodFlag::UNPROTECTED);
+          for(auto i = edgeBegin; i < edgeEnd; i++){
+              GNode dest = chinzgraphs[1].getEdgeDst(i);
+              chinzgraphs[1].getData(dest).value = 1;
+            }
           secondInt.fetch_add(1);
         },
         galois::steal(),
         galois::loopname("Kaam ka loop"));
   std::cout << "FIRST INT = " << firstInt << std::endl;
   std::cout << "SECOND INT = " << secondInt << std::endl;
-
+*/
   //Added by Chinmay
-  /*
+  
+  
   prTopologicalChinmay(transposeGraph);
 
   galois::reportPageAlloc("MeminfoPost");
@@ -1074,7 +1235,7 @@ int main(int argc, char** argv) {
 #if DEBUG
   printPageRank(transposeGraph);
 #endif
-  */
+
 
   totalTime.stop();
 

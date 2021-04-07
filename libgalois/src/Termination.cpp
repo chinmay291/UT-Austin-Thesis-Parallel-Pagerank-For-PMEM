@@ -37,7 +37,7 @@ void galois::substrate::internal::setTermDetect(
 galois::substrate::TerminationDetection&
 galois::substrate::getSystemTermination(unsigned activeThreads) {
   TERM->init(activeThreads);
-  printf("Termination.cpp: TERM->init complete\n");
+  // printf("Termination.cpp: TERM->init complete\n");
   return *TERM;
 }
 
@@ -45,14 +45,14 @@ galois::substrate::getSystemTermination(unsigned activeThreads) {
 galois::substrate::TerminationDetection&
 galois::substrate::getSystemTerminationWorkload1(unsigned activeThreads) {
   TERM1->init(activeThreads);
-  printf("Termination.cpp: TERM1->init complete\n");
+  // printf("Termination.cpp: TERM1->init complete\n");
   return *TERM1;
 }
 
 galois::substrate::TerminationDetection&
 galois::substrate::getSystemTerminationWorkload2(unsigned activeThreads) {
   TERM2->init(activeThreads);
-  printf("Termination.cpp: TERM2->init complete\n");
+  // printf("Termination.cpp: TERM2->init complete\n");
   return *TERM2;
 }
 
