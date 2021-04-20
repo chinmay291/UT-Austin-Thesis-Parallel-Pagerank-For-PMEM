@@ -1,5 +1,7 @@
+find_package(Boost 1.65.1 COMPONENTS system filesystem serialization REQUIRED)
+INCLUDE_DIRECTORIES(${Boost_INCLUDE_DIR})
 add_executable(graph-convert graph-convert.cpp)
-target_link_libraries(graph-convert galois_shmem LLVMSupport pmemobj pmem)
+target_link_libraries(graph-convert galois_shmem LLVMSupport pmemobj pmem ${Boost_LIBRARIES})
 install(TARGETS graph-convert
   EXPORT GaloisTargets
   DESTINATION "${CMAKE_INSTALL_BINDIR}"

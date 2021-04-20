@@ -31,6 +31,8 @@
 #include "galois/substrate/CacheLineStorage.h"
 #include "galois/substrate/HWTopo.h"
 
+#include <chrono>
+
 namespace galois::substrate::internal {
 
 template <typename tpl, int s, int r>
@@ -107,11 +109,19 @@ protected:
   bool running;
   std::function<void(void)> work;
 
+
   //Added by Chinmay
   int numThreads1;
   int numThreads2;
   std::function<void(void)> work1;
   std::function<void(void)> work2;
+  std::chrono::high_resolution_clock::time_point Time1;
+  std::chrono::high_resolution_clock::time_point Time2;
+  long int totalBlockedTimeCompute;
+  long int totalBlockedTimePrefetch;
+  std::atomic<int> numThreadsThatHaveFinished1;
+  std::atomic<int> numThreadsThatHaveFinished2;
+  // std::chrono::milliseconds totalBlockedTime;
   // std::vector<int>work1_tids;
   // std::vector<int>work2_tids;
 
@@ -215,6 +225,9 @@ public:
   
     numThreads1 = num1;
     numThreads2 = num2;
+
+    numThreadsThatHaveFinished1 = 0;
+    numThreadsThatHaveFinished2 = 0;
 
     runInternal();
   }
@@ -348,6 +361,10 @@ public:
         return i;
     abort();
   }
+
+  //Added by Chinmay
+  int getNumThreads1(){ return numThreads1;}
+  int getNumThreads2(){ return numThreads2;}
 
   bool isLeader(unsigned tid) const {
     return signals[tid]->topo.socketLeader == tid;

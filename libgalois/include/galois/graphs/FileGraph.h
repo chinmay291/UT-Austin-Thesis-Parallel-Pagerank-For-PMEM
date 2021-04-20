@@ -719,7 +719,7 @@ public:
   size_t addNeighbor(size_t src, size_t dst) {
     size_t base = src ? outIdx[src - 1] : 0;
     size_t idx  = base + starts[src]++;
-    assert(idx < outIdx[src]);
+    // assert(idx < outIdx[src]);
 
     if (numNodes <= std::numeric_limits<uint32_t>::max())
       reinterpret_cast<uint32_t*>(outs)[idx] = dst; // version 1

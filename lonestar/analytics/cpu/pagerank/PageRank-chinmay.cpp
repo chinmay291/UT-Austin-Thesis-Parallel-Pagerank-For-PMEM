@@ -29,6 +29,7 @@
 #include "galois/gstl.h"
 //For debugging
 #include "galois/substrate/ThreadPool.h"
+// #include<time.h>
 
 const char* desc =
     "Computes page ranks a la Page and Brin. This is a pull-style topology-driven algorithm for PM by Chinmay.";
@@ -53,7 +54,9 @@ static cll::opt<unsigned int> t2(
     cll::desc("Number of threads for second operator of do_specified loop"),
     cll::init(0));
 
-size_t cacheSize = 38610UL * 2UL;
+// size_t cacheSize = 238044 * 2;
+size_t cacheSize = 38606 * 2;
+// size_t cacheSize = 1791489UL;
 
 
 struct LNode {
@@ -93,6 +96,8 @@ void computeOutDeg(Graph& graph) {
   galois::LargeArray<std::atomic<size_t>> vec;
   vec.allocateInterleaved(graph.size());
 
+  // std::vector<long unsigned> durations(graph.size(), 0);
+
   galois::do_all(
       galois::iterate(graph),
       [&](const GNode& src) { vec.constructAt(src, 0ul); }, galois::no_stats(),
@@ -102,13 +107,43 @@ void computeOutDeg(Graph& graph) {
       galois::iterate(graph),
       [&](const GNode& src) {
         for (auto nbr : graph.edges(src)) {
+          //Read from PM - Adding delay
+          // std::chrono::high_resolution_clock::time_point t1 = std::chrono::high_resolution_clock::now();
           GNode dst = graph.getEdgeDst(nbr);
+          dst = graph.getEdgeDst(nbr);
+          dst = graph.getEdgeDst(nbr);
+          dst = graph.getEdgeDst(nbr);
+          // std::chrono::high_resolution_clock::time_point t2 = std::chrono::high_resolution_clock::now();
+          // durations[src] = (long unsigned)std::chrono::duration_cast<std::chrono::nanoseconds>(t2-t1).count();
+          /*
+          struct timespec tim, tim2;
+          tim.tv_sec = 0;
+          tim.tv_nsec = (long unsigned)std::chrono::duration_cast<std::chrono::nanoseconds>(t2-t1).count(); 
+          if(nanosleep(&tim , &tim2) < 0 )   
+          {
+            printf("Nano sleep system call failed \n");
+          }
+          // std::this_thread::sleep_for(std::chrono::nanoseconds((long unsigned)std::chrono::duration_cast<std::chrono::nanoseconds>(t2-t1).count()));
+          std::chrono::high_resolution_clock::time_point t3 = std::chrono::high_resolution_clock::now();
+          printf("Theoretical = %lu, actual = %lu\n",
+            (long unsigned)std::chrono::duration_cast<std::chrono::nanoseconds>(t2-t1).count(),
+            (long unsigned)std::chrono::duration_cast<std::chrono::nanoseconds>(t3-t2).count());
+          */
           vec[dst].fetch_add(1ul);
         };
       },
       galois::steal(), galois::chunk_size<CHUNK_SIZE>(), galois::no_stats(),
       galois::loopname("computeOutDeg"));
 
+  //Calc avg of durations
+  /*
+  long long sum = 0;
+  for(long long i = 0; i < (long long)durations.size(); i++){
+    sum += durations[i];
+  }
+  double avg = (double)sum / (double)durations.size();
+  std::cout << "Average duration of read from PM is " << avg << " ns" << std::endl;
+  */
   galois::do_all(
       galois::iterate(graph),
       [&](const GNode& src) {
@@ -143,6 +178,7 @@ void preprocess(Graph& graph){
 
   //Handling case in which currEnd == graph.end(), ie. last pair not yet added to bounds
   bounds.push_back(std::make_pair(*currBegin, *currEnd));
+  // std::cout << "bound end - begin = " << (*currEnd - *currBegin) << std::endl;
   
 }
 
@@ -860,13 +896,30 @@ void computePRTopologicalNoInsertBag(Graph& graph) {
     galois::do_all(
         galois::iterate(bounds[0].first, bounds[0].second),
         [&](GNode src){
+          // Read from PM - Adding delay
           auto edgeBegin = graph.edge_begin(src, flag);
+          edgeBegin = graph.edge_begin(src, flag);
+          edgeBegin = graph.edge_begin(src, flag);
+          edgeBegin = graph.edge_begin(src, flag);
+
           auto edgeEnd = graph.edge_end(src, flag);
+          edgeEnd = graph.edge_end(src, flag);
+          edgeEnd = graph.edge_end(src, flag);
+          edgeEnd = graph.edge_end(src, flag);
+
           auto cacheIndBegin = graph.edge_begin(src, flag) - graph.edge_begin(*bounds[0].first, flag);
+          cacheIndBegin = graph.edge_begin(src, flag) - graph.edge_begin(*bounds[0].first, flag);
+          cacheIndBegin = graph.edge_begin(src, flag) - graph.edge_begin(*bounds[0].first, flag);
+          cacheIndBegin = graph.edge_begin(src, flag) - graph.edge_begin(*bounds[0].first, flag);
+
           auto j = cacheIndBegin;
 
           for(auto i = edgeBegin; i < edgeEnd; i++){
-            graph.writeToCurrCache(j, graph.getEdgeDst(i));
+            GNode dst = graph.getEdgeDst(i);
+            dst = graph.getEdgeDst(i);
+            dst = graph.getEdgeDst(i);
+
+            graph.writeToCurrCache(j, dst);
             j++;
           }
         },
@@ -897,10 +950,26 @@ void computePRTopologicalNoInsertBag(Graph& graph) {
       galois::do_all(
         galois::iterate(itStart, itEnd),
         [&](GNode src){
+          //Read from PM - Adding delay
           auto edgeBegin = graph.edge_begin(src, flag);
+          edgeBegin = graph.edge_begin(src, flag);
+          edgeBegin = graph.edge_begin(src, flag);
+          edgeBegin = graph.edge_begin(src, flag);
+
           auto edgeEnd = graph.edge_end(src, flag);
+          edgeEnd = graph.edge_end(src, flag);
+          edgeEnd = graph.edge_end(src, flag);
+          edgeEnd = graph.edge_end(src, flag);
+
           auto cacheIndBegin = graph.edge_begin(src, flag);
+          cacheIndBegin = graph.edge_begin(src, flag);
+          cacheIndBegin = graph.edge_begin(src, flag);
+          cacheIndBegin = graph.edge_begin(src, flag);
+
           auto cacheIndEnd = graph.edge_end(src, flag);
+          cacheIndEnd = graph.edge_end(src, flag);
+          cacheIndEnd = graph.edge_end(src, flag);
+          cacheIndEnd = graph.edge_end(src, flag);
           
           if(labels[src] == 'C'){
             //Make sure that edge adj data is read from DRAM and not PM for "Compute" vertices
@@ -910,8 +979,17 @@ void computePRTopologicalNoInsertBag(Graph& graph) {
 
                 LNode& sdata = graph.getData(src, flag);
                 float sum    = 0.0;   
+                //Read from PM - adding delay
                 cacheIndBegin = cacheIndBegin - graph.edge_begin(*bounds[i].first, flag);
+                cacheIndBegin = cacheIndBegin - graph.edge_begin(*bounds[i].first, flag);
+                cacheIndBegin = cacheIndBegin - graph.edge_begin(*bounds[i].first, flag);
+                cacheIndBegin = cacheIndBegin - graph.edge_begin(*bounds[i].first, flag);
+
                 cacheIndEnd = cacheIndEnd - graph.edge_begin(*bounds[i].first, flag);
+                cacheIndEnd = cacheIndEnd - graph.edge_begin(*bounds[i].first, flag);
+                cacheIndEnd = cacheIndEnd - graph.edge_begin(*bounds[i].first, flag);
+                cacheIndEnd = cacheIndEnd - graph.edge_begin(*bounds[i].first, flag);
+
                 for (auto i = cacheIndBegin; i < cacheIndEnd; i++) {
                   GNode dst = graph.readFromCurrCache(i);
 
@@ -937,11 +1015,24 @@ void computePRTopologicalNoInsertBag(Graph& graph) {
             galois::StatTimer prefetchTime("Timer_Prefetch");
             prefetchTime.start();
 
+            //Read from PM - Adding delay
             cacheIndBegin = cacheIndBegin - graph.edge_begin(*bounds[i+1].first, flag);
+            cacheIndBegin = cacheIndBegin - graph.edge_begin(*bounds[i+1].first, flag);
+            cacheIndBegin = cacheIndBegin - graph.edge_begin(*bounds[i+1].first, flag);
+            cacheIndBegin = cacheIndBegin - graph.edge_begin(*bounds[i+1].first, flag);
+
             cacheIndEnd = cacheIndEnd - graph.edge_begin(*bounds[i+1].first, flag);
+            cacheIndEnd = cacheIndEnd - graph.edge_begin(*bounds[i+1].first, flag);
+            cacheIndEnd = cacheIndEnd - graph.edge_begin(*bounds[i+1].first, flag);
+            cacheIndEnd = cacheIndEnd - graph.edge_begin(*bounds[i+1].first, flag);
+
             auto k = cacheIndBegin;
             for(auto i = edgeBegin; i < edgeEnd; i++){
-              graph.writeToNextCache(k,graph.getEdgeDst(i));
+              GNode dst = graph.getEdgeDst(i);
+              dst = graph.getEdgeDst(i);
+              dst = graph.getEdgeDst(i);
+
+              graph.writeToNextCache(k,dst);
               k++;
             }
 
@@ -957,6 +1048,7 @@ void computePRTopologicalNoInsertBag(Graph& graph) {
       
     }
 
+    // std::cout << "accum.reduce() = " << accum.reduce() << std::endl;
     if (accum.reduce() <= tolerance) {
       break;
     }
@@ -995,13 +1087,30 @@ void computePRTopologicalUsingDoSpecified(Graph& graph) {
   galois::do_all(
         galois::iterate(bounds[0].first, bounds[0].second),
         [&](GNode src){
+          //Read from PM - Adding dealy
           auto edgeBegin = graph.edge_begin(src, flag);
+          edgeBegin = graph.edge_begin(src, flag);
+          edgeBegin = graph.edge_begin(src, flag);
+          edgeBegin = graph.edge_begin(src, flag);
+
           auto edgeEnd = graph.edge_end(src, flag);
+          edgeEnd = graph.edge_end(src, flag);
+          edgeEnd = graph.edge_end(src, flag);
+          edgeEnd = graph.edge_end(src, flag);
+          
           auto cacheIndBegin = graph.edge_begin(src, flag) - graph.edge_begin(*bounds[0].first, flag);
+          cacheIndBegin = graph.edge_begin(src, flag) - graph.edge_begin(*bounds[0].first, flag);
+          cacheIndBegin = graph.edge_begin(src, flag) - graph.edge_begin(*bounds[0].first, flag);
+          cacheIndBegin = graph.edge_begin(src, flag) - graph.edge_begin(*bounds[0].first, flag);
+          
           auto j = cacheIndBegin;
 
           for(auto i = edgeBegin; i < edgeEnd; i++){
-            graph.writeToCurrCache(j, graph.getEdgeDst(i));
+            //Read from PM - adding delay
+            GNode dst = graph.getEdgeDst(i);
+            dst = graph.getEdgeDst(i);
+            dst = graph.getEdgeDst(i);
+            graph.writeToCurrCache(j, dst);
             j++;
           }
         },
@@ -1025,7 +1134,7 @@ void computePRTopologicalUsingDoSpecified(Graph& graph) {
           pfEnd = bounds[0].second;  
         }
         
-        
+        // printf("calling do_specified\n");
         galois::do_specified(
           t1, galois::iterate(itStart, itEnd),
           [&](GNode src){
@@ -1034,8 +1143,16 @@ void computePRTopologicalUsingDoSpecified(Graph& graph) {
 
             LNode& sdata = graph.getData(src, flag);
             float sum    = 0.0;   
+            //Read from PM - Adding delay
             auto cacheIndBegin = graph.edge_begin(src, flag) - graph.edge_begin(*bounds[i].first, flag);
+            cacheIndBegin = graph.edge_begin(src, flag) - graph.edge_begin(*bounds[i].first, flag);
+            cacheIndBegin = graph.edge_begin(src, flag) - graph.edge_begin(*bounds[i].first, flag);
+            cacheIndBegin = graph.edge_begin(src, flag) - graph.edge_begin(*bounds[i].first, flag);
+
             auto cacheIndEnd = graph.edge_end(src, flag) - graph.edge_begin(*bounds[i].first, flag);
+            cacheIndEnd = graph.edge_end(src, flag) - graph.edge_begin(*bounds[i].first, flag);
+            cacheIndEnd = graph.edge_end(src, flag) - graph.edge_begin(*bounds[i].first, flag);
+            cacheIndEnd = graph.edge_end(src, flag) - graph.edge_begin(*bounds[i].first, flag);
             
             for (auto i = cacheIndBegin; i < cacheIndEnd; i++) {
                 GNode dst = graph.readFromCurrCache(i);
@@ -1063,13 +1180,30 @@ void computePRTopologicalUsingDoSpecified(Graph& graph) {
             prefetchTime.start();
             // printf("Inside prefetch operator\n");
 
+            //Read from PM - Adding delay
             auto edgeBegin = graph.edge_begin(src, flag);
+            edgeBegin = graph.edge_begin(src, flag);
+            edgeBegin = graph.edge_begin(src, flag);
+            edgeBegin = graph.edge_begin(src, flag);
+
             auto edgeEnd = graph.edge_end(src, flag);
+            edgeEnd = graph.edge_end(src, flag);
+            edgeEnd = graph.edge_end(src, flag);
+            edgeEnd = graph.edge_end(src, flag);
+
             auto cacheIndBegin = graph.edge_begin(src, flag) - graph.edge_begin(*bounds[i+1].first, flag);
+            cacheIndBegin = graph.edge_begin(src, flag) - graph.edge_begin(*bounds[i+1].first, flag);
+            cacheIndBegin = graph.edge_begin(src, flag) - graph.edge_begin(*bounds[i+1].first, flag);
+            cacheIndBegin = graph.edge_begin(src, flag) - graph.edge_begin(*bounds[i+1].first, flag);
             // auto cacheIndEnd = graph.edge_end(src, flag) - graph.edge_begin(*bounds[i+1].first, flag);
             auto k = cacheIndBegin;
             for(auto i = edgeBegin; i < edgeEnd; i++){
-              graph.writeToNextCache(k,graph.getEdgeDst(i));
+              GNode dst = graph.getEdgeDst(i);
+              dst = graph.getEdgeDst(i);
+              dst = graph.getEdgeDst(i);
+              dst = graph.getEdgeDst(i);
+
+              graph.writeToNextCache(k,dst);
               k++;
             }
 
@@ -1083,7 +1217,7 @@ void computePRTopologicalUsingDoSpecified(Graph& graph) {
 
           graph.swapCache();
       }
-
+      // printf("iteration complete\n");
       
       if (accum.reduce() <= tolerance) {
         break;
@@ -1116,6 +1250,7 @@ void prTopologicalChinmay(Graph& graph) {
   galois::StatTimer execTime("Timer_0");
   execTime.start();
   computePRTopologicalUsingDoSpecified(graph);
+  // computePRTopologicalNoInsertBag(graph);
   execTime.stop();
 }
 

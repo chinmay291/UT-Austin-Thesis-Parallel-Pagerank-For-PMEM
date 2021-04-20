@@ -44,7 +44,13 @@ class TopoBarrier : public galois::substrate::Barrier {
   galois::substrate::PerSocketStorage<treenode> nodes;
   galois::substrate::PerThreadStorage<unsigned> sense;
 
+  //Added by Chinmay
+  std::atomic<int> numberofTimesCalled;
+
   void _reinit(unsigned P) {
+    //Added by Chinmay
+    numberofTimesCalled = 0;
+
     auto& tp      = galois::substrate::getThreadPool();
     unsigned pkgs = tp.getCumulativeMaxSocket(P - 1) + 1;
     for (unsigned i = 0; i < pkgs; ++i) {
@@ -81,6 +87,14 @@ public:
   virtual void reinit(unsigned val) { _reinit(val); }
 
   virtual void wait() {
+    //Added by Chinmay
+    numberofTimesCalled.fetch_add(1);
+    auto& tp = galois::substrate::getThreadPool();
+    if((tp.getNumThreads1() + tp.getNumThreads2() > 0) + 
+      (numberofTimesCalled > tp.getNumThreads1() + tp.getNumThreads2())){
+      return;
+    }
+
     unsigned id = galois::substrate::ThreadPool::getTID();
     treenode& n = *nodes.getLocal();
     unsigned& s = *sense.getLocal();
@@ -88,6 +102,7 @@ public:
     // completion tree
     if (leader) {
       while (n.childnotready) {
+        // printf("calling asmPause\n");
         galois::substrate::asmPause();
       }
       n.childnotready = n.havechild;
@@ -101,6 +116,7 @@ public:
     // wait for signal
     if (id != 0) {
       while (n.parentsense != s) {
+        // printf("calling asmPause\n");
         galois::substrate::asmPause();
       }
     }

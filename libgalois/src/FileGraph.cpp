@@ -292,9 +292,18 @@ void FileGraph::fromFile(const std::string& filename) {
   //   GALOIS_SYS_DIE("failed reading ", "'", filename, "'");
   size_t mapped_len;
   int is_pmem;
-  void* base = pmem_map_file(filename.c_str(), buf.st_size, PMEM_FILE_CREATE, 0666, &mapped_len, &is_pmem);
-  if (base == NULL)
+  void* base = NULL;
+  try{
+    base = pmem_map_file(filename.c_str(), buf.st_size, PMEM_FILE_CREATE, 0666, &mapped_len, &is_pmem);
+  }
+  catch(std::bad_alloc& ex){
+    printf("std::bad_alloc!!!!!!!!!!\n");
+  }
+  std::cout << "buf.st_size = " << buf.st_size << ", Mapped len = " << mapped_len << std::endl;
+  if (base == NULL){
+    perror("Error: ");
     GALOIS_SYS_DIE("failed reading ", "'", filename, "'");
+  }
   mappings.push_back({base, static_cast<size_t>(buf.st_size)});
 
   fromMem(base, 0, 0, buf.st_size);

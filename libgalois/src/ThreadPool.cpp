@@ -25,6 +25,7 @@
 #include <algorithm>
 #include <iostream>
 
+
 // Forward declare this to avoid including PerThreadStorage.
 // We avoid this to stress that the thread Pool MUST NOT depend on PTS.
 namespace galois::substrate {
@@ -53,9 +54,20 @@ ThreadPool::ThreadPool()
                      [](per_signal* p) { return !p || !p->done; })) {
     std::atomic_thread_fence(std::memory_order_seq_cst);
   }
+
+  Time1 = std::chrono::high_resolution_clock::now();
+  Time2 = std::chrono::high_resolution_clock::now();
+
+  totalBlockedTimeCompute = 0;
+  totalBlockedTimePrefetch = 0;
+
+  numThreads1 = 0;
+  numThreads2 = 0;
 }
 
 ThreadPool::~ThreadPool() {
+  std::cout << "Total blocked time for compute threads = " << totalBlockedTimeCompute << std::endl;
+  std::cout << "Total blocked time for prefetch threads = " << totalBlockedTimePrefetch << std::endl;
   destroyCommon();
   for (auto& t : threads) {
     t.join();
@@ -137,39 +149,69 @@ void ThreadPool::threadLoop(unsigned tid) {
     me.wait(fastmode);
     cascade(fastmode);
     //Modified by Chinmay
+    std::chrono::high_resolution_clock::time_point t;
     try {
       if(work != nullptr){
         work();
       }
       else{
-        // int workloadType = 0;
-        // for(int i = 0; i < numThreads1; i++){
-        //     if((unsigned int)work1_tids[i] == tid){
-        //       workloadType = 1;
-        //       break;
-        //     }
-        // }
-        // if(workloadType == 0){
-        //   workloadType = 2;
-        // }
-        // if(workloadType == 1){
-        //   printf("Calling work1()\n");
-        //   work1();  
-        //   printf("Completed work1()\n");
-        // }
-        // else{
-        //   printf("Calling work2()\n");
-        //   work2();
-        //   printf("Completed work2()\n");
-        // }    
         if(getTID() < (unsigned int)numThreads1){
           work1();  
+          t = std::chrono::high_resolution_clock::now();
+          if(t.time_since_epoch() > Time1.time_since_epoch()){
+            Time1 = t;
+          }
+          // numThreadsThatHaveFinished1.fetch_add(1);
+          // if(numThreadsThatHaveFinished2 < numThreads2){
+          //   try {
+          //     work2();
+          //   }catch (const shutdown_ty&) {
+          //     return;
+          //   } catch (const fastmode_ty& fm) {
+          //     fastmode = fm.mode;
+          //   } catch (const dedicated_ty dt) {
+          //     me.done = 1;
+          //     dt.fn();
+          //     return;
+          //   } catch (const std::exception& exc) {
+          //     // catch anything thrown within try block that derives from std::exception
+          //     std::cerr << exc.what();
+          //     abort();
+          //   } catch (...) {
+          //     abort();
+          //   } 
+          // }
         }
         else{
           work2();
-        }
+          t = std::chrono::high_resolution_clock::now();
+          if(t.time_since_epoch() > Time2.time_since_epoch()){
+            Time2 = t;
+          }
+          // numThreadsThatHaveFinished2.fetch_add(1);
+          // if(numThreadsThatHaveFinished1 < numThreads1){
+          //   try {
+          //     work1();
+          //   }catch (const shutdown_ty&) {
+          //       return;
+          //     } catch (const fastmode_ty& fm) {
+          //       fastmode = fm.mode;
+          //     } catch (const dedicated_ty dt) {
+          //       me.done = 1;
+          //       dt.fn();
+          //       return;
+          //     } catch (const std::exception& exc) {
+          //       // catch anything thrown within try block that derives from std::exception
+          //       std::cerr << exc.what();
+          //       abort();
+          //     } catch (...) {
+          //       abort();
+          //     }
+          // }
       }
-    } catch (const shutdown_ty&) {
+    }
+  }
+     catch (const shutdown_ty&) {
       return;
     } catch (const fastmode_ty& fm) {
       fastmode = fm.mode;
@@ -242,6 +284,7 @@ void ThreadPool::runInternal(unsigned num) {
   me.wend   = num;
 
   assert(!masterFastmode || masterFastmode == num);
+  
   // launch threads
   cascade(masterFastmode);
   // Do master thread work
@@ -280,6 +323,7 @@ void ThreadPool::runInternal() {
   me.wend   = numThreads1 + numThreads2;
 
   assert(!masterFastmode || (int)masterFastmode == numThreads1 + numThreads2);
+  std::chrono::high_resolution_clock::time_point t;
   // launch threads
   cascade(masterFastmode);
 
@@ -290,9 +334,35 @@ void ThreadPool::runInternal() {
     return;
   } catch (const fastmode_ty& fm) {
   }
+
+  t = std::chrono::high_resolution_clock::now();
+  if(t.time_since_epoch() > Time1.time_since_epoch()){
+      Time1 = t;
+  }
+  numThreadsThatHaveFinished1.fetch_add(1);
+  // if(numThreadsThatHaveFinished2 < numThreads2){
+  //   try {
+  //     work2();
+  //   } catch (const shutdown_ty&) {
+  //     return;
+  //   } catch (const fastmode_ty& fm) {
+  //   }
+  // }
+
   // wait for children
   decascade();
   // std::cout << "Descascade complete" << std::endl;
+  // std::cout << "Blocking period = " << 
+    // std::chrono::duration_cast<std::chrono::milliseconds>(Time2-Time1).count() << std::endl;
+  if(std::chrono::duration_cast<std::chrono::milliseconds>(Time2-Time1).count() > 0){
+    totalBlockedTimeCompute += (long int)std::chrono::duration_cast<std::chrono::milliseconds>(Time2-Time1).count();
+  }
+  else{
+    totalBlockedTimePrefetch += (long int)std::chrono::duration_cast<std::chrono::milliseconds>(Time1-Time2).count();
+    // std::cout << "Blocking period prefetch = " << 
+    // std::chrono::duration_cast<std::chrono::milliseconds>(Time1-Time2).count() << std::endl;
+  } 
+  // totalBlockedTime += std::abs(std::chrono::duration_cast<std::chrono::milliseconds>(Time2-Time1));
   // Clean up
   work    = nullptr;
   work1    = nullptr;

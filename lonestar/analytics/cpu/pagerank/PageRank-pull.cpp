@@ -103,7 +103,12 @@ void computeOutDeg(Graph& graph) {
       galois::iterate(graph),
       [&](const GNode& src) {
         for (auto nbr : graph.edges(src)) {
+          //Read from PM - Adding delay
           GNode dst = graph.getEdgeDst(nbr);
+          dst = graph.getEdgeDst(nbr);
+          dst = graph.getEdgeDst(nbr);
+          dst = graph.getEdgeDst(nbr);
+
           vec[dst].fetch_add(1ul);
         };
       },
@@ -214,10 +219,23 @@ void computePRTopological(Graph& graph) {
           LNode& sdata = graph.getData(src, flag);
           float sum    = 0.0;
 
-          for (auto jj = graph.edge_begin(src, flag),
+          //Read from PM - Adding delay
+          auto jj = graph.edge_begin(src, flag);
+          jj = graph.edge_begin(src, flag);
+          jj = graph.edge_begin(src, flag);
+          
+          auto ej = graph.edge_end(src, flag);
+          ej = graph.edge_end(src, flag);
+          ej = graph.edge_end(src, flag);
+
+          for (jj = graph.edge_begin(src, flag),
                     ej = graph.edge_end(src, flag);
                jj != ej; ++jj) {
+            //Read from PM - adding delay
             GNode dst = graph.getEdgeDst(jj);
+            dst = graph.getEdgeDst(jj);
+            dst = graph.getEdgeDst(jj);
+            dst = graph.getEdgeDst(jj);
 
             LNode& ddata = graph.getData(dst, flag);
             sum += ddata.value / ddata.nout;

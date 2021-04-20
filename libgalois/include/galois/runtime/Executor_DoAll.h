@@ -458,8 +458,6 @@ public:
     unsigned id = substrate::ThreadPool::getTID();
     // printf("term.initializeThread() complete fpr tid = %u\n", id);
 
-    workloadTypes[id] = workloadType;
-
       
   /* We use elements of the vector ranges to initialize ThreadContext instead of
   range.local_begin() and range.local_end() because then the whole range does not
@@ -476,12 +474,23 @@ public:
       index = id - numThreads1;
       // printf("Index = %d\n", index);
     }
-    *workers.getLocal(id) = ThreadContext(id, ranges[index].first, ranges[index].second);
+
+    //Added to allow cross-functional threads
+    if((workloadType == 1 && id >= (unsigned int)numThreads1) || (workloadType == 2 && id < (unsigned int)numThreads1)){
+      *workers.getLocal(id) = ThreadContext(id, range.begin(), range.begin());
+      // printf("Initialised extra thread with id = %u\n",id);
+      
+    }
+    else{
+      *workers.getLocal(id) = ThreadContext(id, ranges[index].first, ranges[index].second);  
+    }
+    
     // ThreadContext& ctx = *workers.getLocal();
     // if(workloadTypes[substrate::ThreadPool::getTID()] == 2){
     //   std::cout << "m_size = " << ctx.m_size << std::endl;   
     // }
 
+    workloadTypes[id] = workloadType;
 
     initTime.stop();
     if(workloadType == 2){
@@ -493,6 +502,7 @@ public:
 // executed serially
 #ifndef NDEBUG
     for (unsigned i = 0; i < workers.size(); ++i) {
+      // printf("Destroying DoAllStealingExec\n");
       auto& ctx = *(workers.getRemote(i));
       assert(!ctx.hasWork() && "Unprocessed work left");
     }
@@ -503,6 +513,10 @@ public:
 
   void operator()(void) {
 
+    // if((workloadTypes[substrate::ThreadPool::getTID()] == 1 && (int)substrate::ThreadPool::getTID() >= numThreads1)
+    //     || (workloadTypes[substrate::ThreadPool::getTID()] == 2 && (int)substrate::ThreadPool::getTID() < numThreads1)){
+    //     printf("Inside operator() for extra thread with id = %u\n", substrate::ThreadPool::getTID());
+    //   }
     ThreadContext& ctx = *workers.getLocal();
     // if(workloadTypes[substrate::ThreadPool::getTID()] == 2){
     //   std::cout << "m_size = " << ctx.m_size << std::endl;   
@@ -523,6 +537,10 @@ public:
 
       assert(!ctx.hasWork());
 
+      // if((workloadTypes[substrate::ThreadPool::getTID()] == 1 && (int)substrate::ThreadPool::getTID() >= numThreads1)
+      //   || (workloadTypes[substrate::ThreadPool::getTID()] == 2 && (int)substrate::ThreadPool::getTID() < numThreads1)){
+      //   printf("Trying steal for extra thread with id = %u\n", substrate::ThreadPool::getTID());
+      // }
       stealTime.start();
       bool stole = trySteal(ctx);
       stealTime.stop();

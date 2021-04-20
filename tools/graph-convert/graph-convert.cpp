@@ -37,6 +37,11 @@
 #include <fcntl.h>
 #include <cstdlib>
 
+#include <boost/archive/text_oarchive.hpp>
+#include <boost/archive/text_iarchive.hpp>
+#include <boost/serialization/vector.hpp>
+
+
 // TODO: move these enums to a common location for all graph convert tools
 enum ConvertMode {
   bipartitegr2bigpetsc,
@@ -82,7 +87,9 @@ enum ConvertMode {
   nodelist2gr,
   pbbs2gr,
   svmlight2gr,
-  edgelist2binary
+  edgelist2binary,
+  //Added by Chinmay
+  gr2partscsrseggr
 };
 
 enum EdgeType { float32_, float64_, int32_, int64_, uint32_, uint64_, void_ };
@@ -103,6 +110,11 @@ static cll::opt<std::string>
 static cll::opt<std::string>
     labelsFilename("labels", cll::desc("labels file for svmlight2gr"),
                    cll::init(""));
+
+//Added by Chinmay
+static cll::opt<uint64_t>
+    LLC_SIZE("LLC_SIZE", cll::desc("size of last level cache"), cll::init((uint64_t)0));
+
 static cll::opt<EdgeType> edgeType(
     "edgeType", cll::desc("Input/Output edge type:"),
     cll::values(clEnumValN(EdgeType::float32_, "float32",
@@ -182,7 +194,9 @@ static cll::opt<ConvertMode> convertMode(
         clEnumVal(svmlight2gr, "Convert svmlight file to binary gr"),
         clEnumVal(edgelist2binary,
                   "Convert edge list to binary edgelist "
-                  "format (assumes vertices of type uin32_t)")),
+                  "format (assumes vertices of type uin32_t)"),
+        //Added by Chinmay
+        clEnumVal(gr2partscsrseggr, "Split gr graph into N parts by source vertex for CSR segmentation")),
     cll::Required);
 static cll::opt<uint32_t>
     sourceNode("sourceNode", cll::desc("Source node ID for BFS traversal"),
@@ -2886,6 +2900,165 @@ struct Svmlight2Gr : public HasNoVoidSpecialization {
   }
 };
 
+//Added by Chinmay
+struct PartitionForCsrSegmentation : public Conversion {
+  template <typename EdgeTy>
+  void convert(const std::string& infilename, const std::string& outfilename) {
+    if (LLC_SIZE == 0) {
+      GALOIS_DIE("Last level cache size cannot be zero");
+    }
+
+    typedef galois::graphs::FileGraph Graph;
+    typedef Graph::GraphNode GNode;
+    typedef galois::graphs::FileGraphWriter Writer;
+
+    Graph graph;
+    graph.fromFile(infilename);
+
+    uint64_t numNodesSubgraph = LLC_SIZE / sizeof(std::pair<float,uint32_t>);
+    // printf("numNodesSubgraph = %lu\n",numNodesSubgraph);
+    uint64_t numSubgraphs = graph.size() / numNodesSubgraph;
+
+    if(graph.size() % numNodesSubgraph != 0){
+      numSubgraphs++;
+    }
+    printf("number of subgraphs = %lu\n",numSubgraphs);
+
+    uint64_t maxEdges = 0;
+
+    auto start = graph.begin();
+    auto end = graph.begin();
+
+    for (uint64_t i = 0; i < numSubgraphs; ++i) {
+      Writer p;
+
+      // auto r = graph.divideByNode(0, 1, i, numParts).first;
+      if(start + numNodesSubgraph > graph.end()){
+        end = graph.end();
+      }
+      else{
+        end = start + numNodesSubgraph;
+      }
+
+      auto r = std::make_pair(start, end);
+      printf("Number of source vertices in subgraph = %lu\n", std::distance(start, end));
+
+      //update start
+      start = end;
+
+      size_t numEdges = 0;
+      if (r.first != r.second)
+        numEdges = std::distance(graph.edge_begin(*r.first),
+                                 graph.edge_end(*(r.second - 1)));
+      if(numEdges > maxEdges)
+        maxEdges = numEdges;
+
+      printf("Number of edges in subgraph = %lu\n",numEdges);
+
+      std::vector<uint64_t> globalToLocal(graph.size(),0);
+      // galois::LargeArray<uint64_t> globalToLocal;
+      // globalToLocal.allocateInterleaved(graph.size());
+      for(uint64_t i = 0; i < graph.size(); i++){
+        globalToLocal[i] = 0;
+      }
+      // galois::do_all(galois::iterate(globalToLocal),
+        // [&](uint64_t i){globalToLocal[i] = 0;}, galois::no_stats());
+
+      uint64_t index = 0;
+      for (Graph::iterator ii = r.first, ei = r.second; ii != ei; ++ii) {
+        GNode src = *ii;
+        globalToLocal[src] = index;
+        index++;
+      }
+
+      for (Graph::iterator ii = r.first, ei = r.second; ii != ei; ++ii) {
+        GNode src = *ii;
+        for (Graph::edge_iterator jj = graph.edge_begin(src),
+                                  ej = graph.edge_end(src);
+             jj != ej; ++jj) {
+          GNode dst = graph.getEdgeDst(jj);
+          if(globalToLocal[dst] == 0){
+            globalToLocal[dst] = index;
+            index++;
+          }
+        }
+      }
+
+      size_t numVertices = index;
+      std::vector<uint64_t> localToGlobal(index, 0);
+      // galois::LargeArray<uint64_t> localToGlobal;
+      // localToGlobal.allocateInterleaved(index);
+      for(uint64_t i = 0; i < graph.size(); i++){
+        if(globalToLocal[i] != 0){
+          localToGlobal[globalToLocal[i]] = i;
+        }
+      }
+
+
+      // std::stringstream ss;
+      std::string archive_name = outfilename + "-LtoG-" + std::to_string(i);
+      std::ofstream ofs(archive_name);
+      boost::archive::text_oarchive oa{ofs};
+      oa << localToGlobal;
+      // std::ofstream ofs;
+      // ofs.open(archive_name, std::ios::app);
+      // ofs.write((char*)&localToGlobal, sizeof(localToGlobal));
+      ofs.close();
+
+      printf("LargeArray written to file\n");
+      std::vector<uint64_t> test(index, 0);
+      // galois::LargeArray<uint64_t> test;
+      // test.allocateInterleaved(index);
+      // std::ifstream ifs;
+      // ifs.open(archive_name, std::ios::in);
+      // ifs.seekg(0);
+      // ifs.read((char*)&test, sizeof(test));
+      std::ifstream ifs(archive_name);
+      boost::archive::text_iarchive ia{ifs};
+      ia >> test;
+      for(int i = 0; i < 10; i++){
+        std::cout << localToGlobal[i] << ", " << test[i] << std::endl;
+      }
+
+      // p.setNumNodes(graph.size());
+      p.setNumNodes(numVertices);
+      p.setNumEdges<EdgeTy>(numEdges);
+
+      p.phase1();
+      for (Graph::iterator ii = r.first, ei = r.second; ii != ei; ++ii) {
+        GNode src = *ii;
+        p.incrementDegree(globalToLocal[src], std::distance(graph.edge_begin(src), graph.edge_end(src)));
+        // p.incrementDegree(src, std::distance(graph.edge_begin(src), graph.edge_end(src)));
+      }
+
+      p.phase2();
+      for (Graph::iterator ii = r.first, ei = r.second; ii != ei; ++ii) {
+        GNode src = *ii;
+        for (Graph::edge_iterator jj = graph.edge_begin(src),
+                                  ej = graph.edge_end(src);
+             jj != ej; ++jj) {
+          GNode dst = graph.getEdgeDst(jj);
+          if constexpr (std::is_void<EdgeTy>::value)
+            p.addNeighbor(globalToLocal[src], globalToLocal[dst]);
+            // p.addNeighbor(src, dst);
+          else
+            p.addNeighbor<EdgeTy>(globalToLocal[src], globalToLocal[dst], graph.getEdgeData<EdgeTy>(jj));
+            // p.addNeighbor<EdgeTy>(src, dst, graph.getEdgeData<EdgeTy>(jj));
+        }
+      }
+
+      p.finish();
+
+      std::ostringstream partname;
+      partname << outfilename << "." << i << ".of." << numSubgraphs;
+
+      p.toFile(partname.str());
+      printStatus(graph.size(), graph.sizeEdges(), p.size(), p.sizeEdges());
+    }
+  }
+  // printf("Maximum number of edges in a subgraph = %lu\n",maxEdges);
+};
+
 int main(int argc, char** argv) {
   galois::SharedMemSys G;
   llvm::cl::ParseCommandLineOptions(argc, argv);
@@ -3022,6 +3195,10 @@ int main(int argc, char** argv) {
     break;
   case edgelist2binary:
     convert<Edgelist2Binary>();
+    break;
+  //Added by Chinmay
+  case gr2partscsrseggr:
+    convert<PartitionForCsrSegmentation>();
     break;
   default:
     abort();
