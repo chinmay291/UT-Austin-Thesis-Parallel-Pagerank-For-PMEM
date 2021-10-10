@@ -1,3 +1,21 @@
+# Summary of changes made by me
+
+1. Enabled files present on PM on an ext4 DAX filesystem to be read directly in PM without being first transferred to the DRAM.
+
+2. Made PM allocations atomic using Intel PMDK(Persistent Memory Development Kit). This avoids PM leaks and makes the application crash-consistent
+
+3. Implemented a new parallel loop construct called do_specified() with the call signature do specified(numThreads1, range1, operator1, numThreads2, range2, operator2). This enables the user to write code which can work on two task lists in parallel using the specified number of threads. Not only that, once one of the tasks is completed, the threads allocated to it will be used to complete the second task, thus speeding up execution. This involved making major changes to the underlying threading library, as this sort of functionality was not conceived when the Galois framework was developed, but it was critical for our use case.
+
+4. Implemented a new version of parallel topology-driven PageRank which splits PageRank calculation into two parts which occur simultaneously using the above 
+specified loop construct: prefetching edge adjacency data from PM to a DRAM cache and calculating PR of the data already present in the cache.
+
+5. Implemented a caching mechanism as described above. The cache contains two parts: One which already contains prefetched data and one where data will be prefetched in the current iteration. This cache cuts DRAM use by 88%, which can be critical for graphs which contains tens of billions of nodes and hundreds of billions of edges.
+
+6. The do_specified() loop reduces execution time of PageRank by 22% as compared to a naive implementation which uses the standard do_all() loop on a worklist containing both compute and prefetch workitems using all available threads. This is due to increased locality of access for threads exeucting one type of task, which results in a higher cache hit rate. 
+
+
+
+
 Overview
 ========
 
